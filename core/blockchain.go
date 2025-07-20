@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"bytes"
@@ -16,13 +16,11 @@ const dbFile = "blockchain_%s.db"
 const blocksBucket = "blocks"
 const genesisCoinbaseData = "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"
 
-// Blockchain implements interactions with a DB
 type Blockchain struct {
 	tip []byte
-	db  *bolt.DB
+	Db  *bolt.DB
 }
 
-// CreateBlockchain creates a new blockchain DB
 func CreateBlockchain(address, nodeID string) *Blockchain {
 	dbFile := fmt.Sprintf(dbFile, nodeID)
 	if dbExists(dbFile) {
@@ -68,7 +66,6 @@ func CreateBlockchain(address, nodeID string) *Blockchain {
 	return &bc
 }
 
-// NewBlockchain creates a new Blockchain with genesis Block
 func NewBlockchain(nodeID string) *Blockchain {
 	dbFile := fmt.Sprintf(dbFile, nodeID)
 	if dbExists(dbFile) == false {
@@ -97,9 +94,8 @@ func NewBlockchain(nodeID string) *Blockchain {
 	return &bc
 }
 
-// AddBlock saves the block into the blockchain
 func (bc *Blockchain) AddBlock(block *Block) {
-	err := bc.db.Update(func(tx *bolt.Tx) error {
+	err := bc.Db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 		blockInDb := b.Get(block.Hash)
 
@@ -132,7 +128,6 @@ func (bc *Blockchain) AddBlock(block *Block) {
 	}
 }
 
-// FindTransaction finds a transaction by its ID
 func (bc *Blockchain) FindTransaction(ID []byte) (Transaction, error) {
 	bci := bc.Iterator()
 
@@ -153,7 +148,6 @@ func (bc *Blockchain) FindTransaction(ID []byte) (Transaction, error) {
 	return Transaction{}, errors.New("Transaction is not found")
 }
 
-// FindUTXO finds all unspent transaction outputs and returns transactions with spent outputs removed
 func (bc *Blockchain) FindUTXO() map[string]TXOutputs {
 	UTXO := make(map[string]TXOutputs)
 	spentTXOs := make(map[string][]int)
@@ -197,18 +191,16 @@ func (bc *Blockchain) FindUTXO() map[string]TXOutputs {
 	return UTXO
 }
 
-// Iterator returns a BlockchainIterat
 func (bc *Blockchain) Iterator() *BlockchainIterator {
-	bci := &BlockchainIterator{bc.tip, bc.db}
+	bci := &BlockchainIterator{bc.tip, bc.Db}
 
 	return bci
 }
 
-// GetBestHeight returns the height of the latest block
 func (bc *Blockchain) GetBestHeight() int {
 	var lastBlock Block
 
-	err := bc.db.View(func(tx *bolt.Tx) error {
+	err := bc.Db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 		lastHash := b.Get([]byte("l"))
 		blockData := b.Get(lastHash)
@@ -223,11 +215,10 @@ func (bc *Blockchain) GetBestHeight() int {
 	return lastBlock.Height
 }
 
-// GetBlock finds a block by its hash and returns it
 func (bc *Blockchain) GetBlock(blockHash []byte) (Block, error) {
 	var block Block
 
-	err := bc.db.View(func(tx *bolt.Tx) error {
+	err := bc.Db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 
 		blockData := b.Get(blockHash)
@@ -247,7 +238,6 @@ func (bc *Blockchain) GetBlock(blockHash []byte) (Block, error) {
 	return block, nil
 }
 
-// GetBlockHashes returns a list of hashes of all the blocks in the chain
 func (bc *Blockchain) GetBlockHashes() [][]byte {
 	var blocks [][]byte
 	bci := bc.Iterator()
@@ -265,7 +255,6 @@ func (bc *Blockchain) GetBlockHashes() [][]byte {
 	return blocks
 }
 
-// MineBlock mines a new block with the provided transactions
 func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block {
 	var lastHash []byte
 	var lastHeight int
@@ -276,7 +265,7 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block {
 		}
 	}
 
-	err := bc.db.View(func(tx *bolt.Tx) error {
+	err := bc.Db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 		lastHash = b.Get([]byte("l"))
 
@@ -293,7 +282,7 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block {
 
 	newBlock := NewBlock(transactions, lastHash, lastHeight+1)
 
-	err = bc.db.Update(func(tx *bolt.Tx) error {
+	err = bc.Db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 		err := b.Put(newBlock.Hash, newBlock.Serialize())
 		if err != nil {
@@ -316,7 +305,6 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block {
 	return newBlock
 }
 
-// SignTransaction signs inputs of a Transaction
 func (bc *Blockchain) SignTransaction(tx *Transaction, privKey ecdsa.PrivateKey) {
 	prevTXs := make(map[string]Transaction)
 
@@ -331,7 +319,6 @@ func (bc *Blockchain) SignTransaction(tx *Transaction, privKey ecdsa.PrivateKey)
 	tx.Sign(privKey, prevTXs)
 }
 
-// VerifyTransaction verifies transaction input signatures
 func (bc *Blockchain) VerifyTransaction(tx *Transaction) bool {
 	if tx.IsCoinbase() {
 		return true

@@ -1,8 +1,7 @@
-package main
+package core
 
 import "bytes"
 
-// TXInput represents a transaction input
 type TXInput struct {
 	Txid      []byte
 	Vout      int
@@ -10,7 +9,6 @@ type TXInput struct {
 	PubKey    []byte
 }
 
-// UsesKey checks whether the address initiated the transaction
 func (in *TXInput) UsesKey(pubKeyHash []byte) bool {
 	lockingHash := HashPubKey(in.PubKey)
 

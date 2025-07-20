@@ -1,12 +1,13 @@
-package main
+package cli_controllers
 
 import (
+	"Blockchain/core"
 	"fmt"
 	"log"
 )
 
 func (cli *CLI) listAddresses(nodeID string) {
-	wallets, err := NewWallets(nodeID)
+	wallets, err := core.NewWallets(nodeID)
 	if err != nil {
 		log.Panic(err)
 	}

@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"log"
@@ -6,13 +6,11 @@ import (
 	"github.com/boltdb/bolt"
 )
 
-// BlockchainIterator is used to iterate over blockchain blocks
 type BlockchainIterator struct {
 	currentHash []byte
 	db          *bolt.DB
 }
 
-// Next returns next block starting from the tip
 func (i *BlockchainIterator) Next() *Block {
 	var block *Block
 

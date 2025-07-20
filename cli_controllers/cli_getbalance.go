@@ -1,20 +1,21 @@
-package main
+package cli_controllers
 
 import (
+	"Blockchain/core"
 	"fmt"
 	"log"
 )
 
 func (cli *CLI) getBalance(address, nodeID string) {
-	if !ValidateAddress(address) {
+	if !core.ValidateAddress(address) {
 		log.Panic("ERROR: Address is not valid")
 	}
-	bc := NewBlockchain(nodeID)
-	UTXOSet := UTXOSet{bc}
-	defer bc.db.Close()
+	bc := core.NewBlockchain(nodeID)
+	UTXOSet := core.UTXOSet{bc}
+	defer bc.Db.Close()
 
 	balance := 0
-	pubKeyHash := Base58Decode([]byte(address))
+	pubKeyHash := core.Base58Decode([]byte(address))
 	pubKeyHash = pubKeyHash[1 : len(pubKeyHash)-4]
 	UTXOs := UTXOSet.FindUTXO(pubKeyHash)
 

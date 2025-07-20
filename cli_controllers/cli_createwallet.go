@@ -1,9 +1,12 @@
-package main
+package cli_controllers
 
-import "fmt"
+import (
+	"Blockchain/core"
+	"fmt"
+)
 
 func (cli *CLI) createWallet(nodeID string) {
-	wallets, _ := NewWallets(nodeID)
+	wallets, _ := core.NewWallets(nodeID)
 	address := wallets.CreateWallet()
 	wallets.SaveToFile(nodeID)
 

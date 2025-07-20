@@ -1,6 +1,11 @@
 package main
 
+import (
+	"Blockchain/cli_controllers"
+)
+
 func main() {
-	cli := CLI{}
+	cli := cli_controllers.CLI{}
 	cli.Run()
+	return
 }

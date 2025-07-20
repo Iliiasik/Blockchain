@@ -1,10 +1,13 @@
-package main
+package cli_controllers
 
-import "fmt"
+import (
+	"Blockchain/core"
+	"fmt"
+)
 
 func (cli *CLI) reindexUTXO(nodeID string) {
-	bc := NewBlockchain(nodeID)
-	UTXOSet := UTXOSet{bc}
+	bc := core.NewBlockchain(nodeID)
+	UTXOSet := core.UTXOSet{bc}
 	UTXOSet.Reindex()
 
 	count := UTXOSet.CountTransactions()

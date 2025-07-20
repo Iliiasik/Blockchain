@@ -1,13 +1,13 @@
-package main
+package core
 
 import (
+	"Blockchain/utils"
 	"bytes"
 	"math/big"
 )
 
 var b58Alphabet = []byte("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
 
-// Base58Encode encodes a byte array to Base58
 func Base58Encode(input []byte) []byte {
 	var result []byte
 
@@ -22,7 +22,7 @@ func Base58Encode(input []byte) []byte {
 		result = append(result, b58Alphabet[mod.Int64()])
 	}
 
-	ReverseBytes(result)
+	utils.ReverseBytes(result)
 	for b := range input {
 		if b == 0x00 {
 			result = append([]byte{b58Alphabet[0]}, result...)
@@ -34,7 +34,6 @@ func Base58Encode(input []byte) []byte {
 	return result
 }
 
-// Base58Decode decodes Base58-encoded data
 func Base58Decode(input []byte) []byte {
 	result := big.NewInt(0)
 	zeroBytes := 0

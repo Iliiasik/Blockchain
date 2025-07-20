@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"bytes"
@@ -17,19 +17,16 @@ import (
 
 const subsidy = 10
 
-// Transaction represents a Bitcoin transaction
 type Transaction struct {
 	ID   []byte
 	Vin  []TXInput
 	Vout []TXOutput
 }
 
-// IsCoinbase checks whether the transaction is coinbase
 func (tx Transaction) IsCoinbase() bool {
 	return len(tx.Vin) == 1 && len(tx.Vin[0].Txid) == 0 && tx.Vin[0].Vout == -1
 }
 
-// Serialize returns a serialized Transaction
 func (tx Transaction) Serialize() []byte {
 	var encoded bytes.Buffer
 
@@ -42,7 +39,6 @@ func (tx Transaction) Serialize() []byte {
 	return encoded.Bytes()
 }
 
-// Hash returns the hash of the Transaction
 func (tx *Transaction) Hash() []byte {
 	var hash [32]byte
 
@@ -54,7 +50,6 @@ func (tx *Transaction) Hash() []byte {
 	return hash[:]
 }
 
-// Sign signs each input of a Transaction
 func (tx *Transaction) Sign(privKey ecdsa.PrivateKey, prevTXs map[string]Transaction) {
 	if tx.IsCoinbase() {
 		return
@@ -86,7 +81,6 @@ func (tx *Transaction) Sign(privKey ecdsa.PrivateKey, prevTXs map[string]Transac
 	}
 }
 
-// String returns a human-readable representation of a transaction
 func (tx Transaction) String() string {
 	var lines []string
 
@@ -110,7 +104,6 @@ func (tx Transaction) String() string {
 	return strings.Join(lines, "\n")
 }
 
-// TrimmedCopy creates a trimmed copy of Transaction to be used in signing
 func (tx *Transaction) TrimmedCopy() Transaction {
 	var inputs []TXInput
 	var outputs []TXOutput
@@ -128,7 +121,6 @@ func (tx *Transaction) TrimmedCopy() Transaction {
 	return txCopy
 }
 
-// Verify verifies signatures of Transaction inputs
 func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
 	if tx.IsCoinbase() {
 		return true
@@ -172,7 +164,6 @@ func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
 	return true
 }
 
-// NewCoinbaseTX creates a new coinbase transaction
 func NewCoinbaseTX(to, data string) *Transaction {
 	if data == "" {
 		randData := make([]byte, 20)
@@ -192,7 +183,6 @@ func NewCoinbaseTX(to, data string) *Transaction {
 	return &tx
 }
 
-// NewUTXOTransaction creates a new transaction
 func NewUTXOTransaction(wallet *Wallet, to string, amount int, UTXOSet *UTXOSet) *Transaction {
 	var inputs []TXInput
 	var outputs []TXOutput
@@ -204,7 +194,6 @@ func NewUTXOTransaction(wallet *Wallet, to string, amount int, UTXOSet *UTXOSet)
 		log.Panic("ERROR: Not enough funds")
 	}
 
-	// Build a list of inputs
 	for txid, outs := range validOutputs {
 		txID, err := hex.DecodeString(txid)
 		if err != nil {
@@ -217,7 +206,6 @@ func NewUTXOTransaction(wallet *Wallet, to string, amount int, UTXOSet *UTXOSet)
 		}
 	}
 
-	// Build a list of outputs
 	from := fmt.Sprintf("%s", wallet.GetAddress())
 	outputs = append(outputs, *NewTXOutput(amount, to))
 	if acc > amount {
@@ -231,7 +219,6 @@ func NewUTXOTransaction(wallet *Wallet, to string, amount int, UTXOSet *UTXOSet)
 	return &tx
 }
 
-// DeserializeTransaction deserializes a transaction
 func DeserializeTransaction(data []byte) Transaction {
 	var transaction Transaction
 

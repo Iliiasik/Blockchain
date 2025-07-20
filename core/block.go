@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"bytes"
@@ -7,7 +7,6 @@ import (
 	"time"
 )
 
-// Block represents a block in the blockchain
 type Block struct {
 	Timestamp     int64
 	Transactions  []*Transaction
@@ -17,7 +16,6 @@ type Block struct {
 	Height        int
 }
 
-// NewBlock creates and returns Block
 func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int) *Block {
 	block := &Block{time.Now().Unix(), transactions, prevBlockHash, []byte{}, 0, height}
 	pow := NewProofOfWork(block)
@@ -29,12 +27,10 @@ func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int) *Bl
 	return block
 }
 
-// NewGenesisBlock creates and returns genesis Block
 func NewGenesisBlock(coinbase *Transaction) *Block {
 	return NewBlock([]*Transaction{coinbase}, []byte{}, 0)
 }
 
-// HashTransactions returns a hash of the transactions in the block
 func (b *Block) HashTransactions() []byte {
 	var transactions [][]byte
 
@@ -46,7 +42,6 @@ func (b *Block) HashTransactions() []byte {
 	return mTree.RootNode.Data
 }
 
-// Serialize serializes the block
 func (b *Block) Serialize() []byte {
 	var result bytes.Buffer
 	encoder := gob.NewEncoder(&result)
@@ -59,7 +54,6 @@ func (b *Block) Serialize() []byte {
 	return result.Bytes()
 }
 
-// DeserializeBlock deserializes a block
 func DeserializeBlock(d []byte) *Block {
 	var block Block
 
