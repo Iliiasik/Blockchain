@@ -14,6 +14,7 @@ import (
 )
 
 const version = byte(0x00)
+const walletFile = "wallet.dat"
 const addressChecksumLen = 4
 
 type Wallet struct {
@@ -55,6 +56,11 @@ func HashPubKey(pubKey []byte) []byte {
 
 func ValidateAddress(address string) bool {
 	pubKeyHash := Base58Decode([]byte(address))
+
+	if len(pubKeyHash) < addressChecksumLen+1 {
+		return false
+	}
+
 	actualChecksum := pubKeyHash[len(pubKeyHash)-addressChecksumLen:]
 	version := pubKeyHash[0]
 	pubKeyHash = pubKeyHash[1 : len(pubKeyHash)-addressChecksumLen]
@@ -95,6 +101,7 @@ func (w *Wallet) GobEncode() ([]byte, error) {
 	}
 
 	var buf bytes.Buffer
+
 	encoder := gob.NewEncoder(&buf)
 	err := encoder.Encode(privKey)
 	if err != nil {
@@ -127,7 +134,6 @@ func (w *Wallet) GobDecode(data []byte) error {
 			Curve: elliptic.P256(),
 		},
 	}
-
 	w.PublicKey = make([]byte, buf.Len())
 	_, err = buf.Read(w.PublicKey)
 	if err != nil {

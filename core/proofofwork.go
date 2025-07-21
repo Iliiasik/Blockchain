@@ -13,7 +13,7 @@ var (
 	maxNonce = math.MaxInt64
 )
 
-const targetBits = 8
+const targetBits = 16
 
 type ProofOfWork struct {
 	block  *Block
