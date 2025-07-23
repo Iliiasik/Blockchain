@@ -1,4 +1,4 @@
- Blockchain Demonstration
+# Blockchain Demonstration
 
 This application is created to demonstrate the principles of blockchain technology through a graphical user interface (GUI). It is built with Go using the [Fyne](https://fyne.io) toolkit.
 
