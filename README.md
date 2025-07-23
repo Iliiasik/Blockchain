@@ -29,5 +29,6 @@ go run main.go
   <img width="700" alt="Interface Screenshot 1" src="https://github.com/user-attachments/assets/534e8803-5f9d-49d4-a27a-8651d8a02f82" />
   
   <img width="700" alt="Interface Screenshot 2" src="https://github.com/user-attachments/assets/8e5f64b0-7a29-48b5-a100-07816b97e4ba" />
-  
+
+  <img width="700" alt="Interface Screenshot 3" src="https://github.com/user-attachments/assets/27933e89-f26a-4a70-bc9e-773e903a9311" />
 </div>
