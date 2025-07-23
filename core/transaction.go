@@ -15,8 +15,6 @@ import (
 	"strings"
 )
 
-const subsidy = 10
-
 type Transaction struct {
 	ID   []byte
 	Vin  []TXInput
@@ -162,7 +160,7 @@ func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
 	return true
 }
 
-func NewCoinbaseTX(to, data string) *Transaction {
+func NewCoinbaseTX(to, data string, subsidy int) *Transaction {
 	if data == "" {
 		randData := make([]byte, 20)
 		_, err := rand.Read(randData)

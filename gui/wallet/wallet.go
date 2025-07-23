@@ -24,7 +24,7 @@ func NewWalletTab(window fyne.Window) *container.TabItem {
 }
 
 func (w *WalletUI) createTab() *container.TabItem {
-	createWalletBtn := widget.NewButtonWithIcon("Create New Wallet", theme.ContentAddIcon(), w.onCreateWallet)
+	createWalletBtn := widget.NewButtonWithIcon("Create new wallet", theme.ContentAddIcon(), w.onCreateWallet)
 	w.list = w.createAddressesList()
 	refreshBtn := widget.NewButtonWithIcon("Refresh", theme.ViewRefreshIcon(), w.refreshList)
 
@@ -40,7 +40,7 @@ func (w *WalletUI) createTab() *container.TabItem {
 
 	content := container.NewBorder(
 		container.NewVBox(
-			widget.NewLabelWithStyle("Wallet Management",
+			widget.NewLabelWithStyle("Wallets management",
 				fyne.TextAlignCenter,
 				fyne.TextStyle{Bold: true}),
 			buttonBar,
@@ -52,7 +52,7 @@ func (w *WalletUI) createTab() *container.TabItem {
 		scrollContainer,
 	)
 
-	return container.NewTabItem("Wallet", content)
+	return container.NewTabItem("Wallets", content)
 }
 
 func (w *WalletUI) onCreateWallet() {
@@ -60,7 +60,7 @@ func (w *WalletUI) onCreateWallet() {
 	w.walletData.SaveToFile()
 
 	dialog.ShowInformation(
-		"New Wallet Created",
+		"New wallet created",
 		fmt.Sprintf("Address:\n%s", address),
 		w.window,
 	)
@@ -141,7 +141,7 @@ func (w *WalletUI) updateAddressItem(i int, item fyne.CanvasObject) {
 	copyBtn.OnTapped = func() {
 		w.window.Clipboard().SetContent(address)
 		dialog.ShowInformation(
-			"Address Copied",
+			"Address copied",
 			"Wallet address copied to clipboard",
 			w.window,
 		)

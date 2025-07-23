@@ -3,25 +3,25 @@ package app
 import (
 	"Blockchain/gui/about"
 	"Blockchain/gui/blockchain"
+	"Blockchain/gui/state"
 	"Blockchain/gui/transaction"
 	"Blockchain/gui/wallet"
 	"Blockchain/resources"
-	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/theme"
 	"net/url"
 )
 
 type BlockchainApp struct {
 	app    fyne.App
 	window fyne.Window
+	state  *state.AppState
 }
 
 func NewBlockchainApp() *BlockchainApp {
 	a := app.NewWithID("blockchain.demo")
+	a.Settings().SetTheme(&resources.CustomTheme{})
 	w := a.NewWindow("Blockchain Demo")
 	w.SetIcon(resources.ResourceIconPng)
 	w.Resize(fyne.NewSize(800, 600))
@@ -29,6 +29,7 @@ func NewBlockchainApp() *BlockchainApp {
 	return &BlockchainApp{
 		app:    a,
 		window: w,
+		state:  state.NewAppState(),
 	}
 }
 
@@ -41,20 +42,10 @@ func (b *BlockchainApp) Run() {
 func (b *BlockchainApp) createMainMenu() *fyne.MainMenu {
 	return fyne.NewMainMenu(
 		fyne.NewMenu("File"),
-		fyne.NewMenu("Theme",
-			fyne.NewMenuItem("Light", func() {
-				b.app.Settings().SetTheme(theme.LightTheme())
-			}),
-			fyne.NewMenuItem("Dark", func() {
-				b.app.Settings().SetTheme(theme.DarkTheme())
-			}),
-		),
 		fyne.NewMenu("Code",
 			fyne.NewMenuItem("GitHub", func() {
-				err := fyne.CurrentApp().OpenURL(parseURL("https://github.com/Iliiasik/Blockchain"))
-				if err != nil {
-					dialog.ShowError(err, b.window)
-				}
+				u, _ := url.Parse("https://github.com/Iliiasik/Blockchain")
+				_ = fyne.CurrentApp().OpenURL(u)
 			}),
 		),
 	)
@@ -64,21 +55,9 @@ func (b *BlockchainApp) createContent() fyne.CanvasObject {
 	tabs := container.NewAppTabs(
 		about.NewAboutTab(),
 		wallet.NewWalletTab(b.window),
-		blockchain.NewBlockchainTab(b.window),
-		transaction.NewTransactionTab(b.window),
+		blockchain.NewBlockchainTab(b.window, b.state),
+		transaction.NewTransactionTab(b.window, b.state),
 	)
 	tabs.SetTabLocation(container.TabLocationLeading)
 	return tabs
-}
-
-func (b *BlockchainApp) showError(message string) {
-	dialog.ShowError(fmt.Errorf(message), b.window)
-}
-
-func parseURL(raw string) *url.URL {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return nil
-	}
-	return u
 }

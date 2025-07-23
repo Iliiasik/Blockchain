@@ -20,7 +20,6 @@ func NewAboutTab() *container.TabItem {
 	title.TextStyle = fyne.TextStyle{Bold: true}
 
 	header := container.NewHBox(
-		widget.NewIcon(theme.ComputerIcon()),
 		title,
 	)
 	headerSpacer := container.NewVBox(

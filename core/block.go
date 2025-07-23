@@ -13,11 +13,20 @@ type Block struct {
 	PrevBlockHash []byte
 	Hash          []byte
 	Nonce         int
+	Bits          int
 }
 
-func NewBlock(transactions []*Transaction, prevBlockHash []byte) *Block {
-	block := &Block{time.Now().Unix(), transactions, prevBlockHash, []byte{}, 0}
-	pow := NewProofOfWork(block)
+func NewBlock(transactions []*Transaction, prevBlockHash []byte, targetBits int) *Block {
+	block := &Block{
+		Timestamp:     time.Now().Unix(),
+		Transactions:  transactions,
+		PrevBlockHash: prevBlockHash,
+		Hash:          []byte{},
+		Nonce:         0,
+		Bits:          targetBits,
+	}
+
+	pow := NewProofOfWork(block, targetBits)
 	nonce, hash := pow.Run()
 
 	block.Hash = hash[:]
@@ -26,8 +35,8 @@ func NewBlock(transactions []*Transaction, prevBlockHash []byte) *Block {
 	return block
 }
 
-func NewGenesisBlock(coinbase *Transaction) *Block {
-	return NewBlock([]*Transaction{coinbase}, []byte{})
+func NewGenesisBlock(coinbase *Transaction, targetBits int) *Block {
+	return NewBlock([]*Transaction{coinbase}, []byte{}, targetBits)
 }
 
 func (b *Block) HashTransactions() []byte {

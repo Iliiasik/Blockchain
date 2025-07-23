@@ -21,33 +21,34 @@ type Blockchain struct {
 	Db  *bolt.DB
 }
 
-func CreateBlockchain(address string) (*Blockchain, error) {
+func CreateBlockchain(address string, subsidy int, targetBits int) (*Blockchain, error) {
 	if dbExists() {
-		return nil, fmt.Errorf("Blockchain already exists")
+		return nil, fmt.Errorf("blockchain already exists")
 	}
 
 	var tip []byte
 
-	cbtx := NewCoinbaseTX(address, genesisCoinbaseData)
-	genesis := NewGenesisBlock(cbtx)
+	cbtx := NewCoinbaseTX(address, genesisCoinbaseData, subsidy)
+
+	genesis := NewGenesisBlock(cbtx, targetBits)
 
 	db, err := bolt.Open(dbFile, 0600, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not open db: %v", err)
 	}
 
 	err = db.Update(func(tx *bolt.Tx) error {
 		b, err := tx.CreateBucket([]byte(blocksBucket))
 		if err != nil {
-			return err
+			return fmt.Errorf("could not create bucket: %v", err)
 		}
 
 		if err := b.Put(genesis.Hash, genesis.Serialize()); err != nil {
-			return err
+			return fmt.Errorf("could not store genesis block: %v", err)
 		}
 
 		if err := b.Put([]byte("l"), genesis.Hash); err != nil {
-			return err
+			return fmt.Errorf("could not update last block hash: %v", err)
 		}
 
 		tip = genesis.Hash
@@ -57,7 +58,10 @@ func CreateBlockchain(address string) (*Blockchain, error) {
 		return nil, err
 	}
 
-	fmt.Printf("Blockchain created successfully! Genesis block hash: %x\n", tip)
+	fmt.Printf("Blockchain created successfully!\n")
+	fmt.Printf("Genesis block hash: %x\n", tip)
+	fmt.Printf("Mining difficulty: %d bits\n", targetBits)
+	fmt.Printf("Block reward (subsidy): %d\n", subsidy)
 
 	bc := Blockchain{tip, db}
 	return &bc, nil
@@ -159,11 +163,12 @@ func (bc *Blockchain) Iterator() *BlockchainIterator {
 	return bci
 }
 
-func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block {
+func (bc *Blockchain) MineBlock(transactions []*Transaction, currentBits int) *Block {
 	var lastHash []byte
+	var lastBits int
 
 	for _, tx := range transactions {
-		if bc.VerifyTransaction(tx) != true {
+		if !bc.VerifyTransaction(tx) {
 			log.Panic("ERROR: Invalid transaction")
 		}
 	}
@@ -172,28 +177,32 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block {
 		b := tx.Bucket([]byte(blocksBucket))
 		lastHash = b.Get([]byte("l"))
 
+		if lastBlockData := b.Get(lastHash); lastBlockData != nil {
+			lastBlock := DeserializeBlock(lastBlockData)
+			lastBits = lastBlock.Bits
+		}
 		return nil
 	})
 	if err != nil {
 		log.Panic(err)
 	}
 
-	newBlock := NewBlock(transactions, lastHash)
+	targetBits := currentBits
+	if targetBits == 0 {
+		targetBits = lastBits
+	}
+
+	newBlock := NewBlock(transactions, lastHash, targetBits)
 
 	err = bc.Db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
-		err := b.Put(newBlock.Hash, newBlock.Serialize())
-		if err != nil {
-			log.Panic(err)
+		if err := b.Put(newBlock.Hash, newBlock.Serialize()); err != nil {
+			return err
 		}
-
-		err = b.Put([]byte("l"), newBlock.Hash)
-		if err != nil {
-			log.Panic(err)
+		if err := b.Put([]byte("l"), newBlock.Hash); err != nil {
+			return err
 		}
-
 		bc.tip = newBlock.Hash
-
 		return nil
 	})
 	if err != nil {

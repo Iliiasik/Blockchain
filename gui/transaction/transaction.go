@@ -2,6 +2,7 @@ package transaction
 
 import (
 	"Blockchain/core"
+	"Blockchain/gui/state"
 	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -12,11 +13,19 @@ import (
 )
 
 type TransactionUI struct {
-	window fyne.Window
+	window         fyne.Window
+	state          *state.AppState
+	blocks         []*core.Block
+	loadingSpinner *widget.ProgressBarInfinite
 }
 
-func NewTransactionTab(window fyne.Window) *container.TabItem {
-	ui := &TransactionUI{window: window}
+func NewTransactionTab(window fyne.Window, state *state.AppState) *container.TabItem {
+	ui := &TransactionUI{
+		window: window,
+		state:  state,
+	}
+	ui.loadingSpinner = widget.NewProgressBarInfinite()
+	ui.loadingSpinner.Hide()
 	return ui.createTab()
 }
 
@@ -68,8 +77,6 @@ func (t *TransactionUI) createTab() *container.TabItem {
 	toBinding.AddListener(binding.NewDataListener(func() { checkInputs() }))
 	amountBinding.AddListener(binding.NewDataListener(func() { checkInputs() }))
 
-	statusLabel := widget.NewLabel("")
-
 	return container.NewTabItem("Transactions",
 		container.NewVBox(
 			widget.NewLabelWithStyle("Send transaction",
@@ -85,8 +92,8 @@ func (t *TransactionUI) createTab() *container.TabItem {
 			widget.NewLabel("Amount (integer)"),
 			amountEntry,
 
+			t.loadingSpinner,
 			sendBtn,
-			statusLabel,
 		),
 	)
 }
@@ -94,6 +101,7 @@ func (t *TransactionUI) createTab() *container.TabItem {
 func (t *TransactionUI) onSendTransaction(from, to, amount string) {
 	defer func() {
 		if r := recover(); r != nil {
+			t.loadingSpinner.Hide()
 			dialog.ShowError(fmt.Errorf("Transaction failed: %v", r), t.window)
 		}
 	}()
@@ -113,25 +121,44 @@ func (t *TransactionUI) onSendTransaction(from, to, amount string) {
 		return
 	}
 
-	bc, err := core.NewBlockchain()
-	if err != nil {
-		dialog.ShowError(err, t.window)
-		return
-	}
-	defer bc.Db.Close()
-
-	UTXOSet := core.UTXOSet{bc}
-	tx, err := core.NewUTXOTransaction(from, to, amountInt, &UTXOSet)
-	if err != nil {
-		dialog.ShowError(err, t.window)
+	subsidy := t.state.Subsidy
+	if subsidy <= 0 {
+		dialog.ShowError(fmt.Errorf("Invalid subsidy"), t.window)
 		return
 	}
 
-	cbTx := core.NewCoinbaseTX(from, "")
-	newBlock := bc.MineBlock([]*core.Transaction{cbTx, tx})
-	UTXOSet.Update(newBlock)
+	t.loadingSpinner.Show()
 
-	dialog.ShowInformation("Success",
-		fmt.Sprintf("Transaction sent!\nNew block mined: %x", newBlock.Hash),
-		t.window)
+	go func() {
+		bc, err := core.NewBlockchain()
+		if err != nil {
+			fyne.Do(func() {
+				t.loadingSpinner.Hide()
+				dialog.ShowError(err, t.window)
+			})
+			return
+		}
+		defer bc.Db.Close()
+
+		UTXOSet := core.UTXOSet{bc}
+		tx, err := core.NewUTXOTransaction(from, to, amountInt, &UTXOSet)
+		if err != nil {
+			fyne.Do(func() {
+				t.loadingSpinner.Hide()
+				dialog.ShowError(err, t.window)
+			})
+			return
+		}
+
+		cbTx := core.NewCoinbaseTX(from, "", subsidy)
+		newBlock := bc.MineBlock([]*core.Transaction{cbTx, tx}, t.state.TargetBits)
+		UTXOSet.Update(newBlock)
+
+		fyne.Do(func() {
+			t.loadingSpinner.Hide()
+			dialog.ShowInformation("Success",
+				fmt.Sprintf("Transaction sent!\nNew block mined: %x", newBlock.Hash),
+				t.window)
+		})
+	}()
 }
