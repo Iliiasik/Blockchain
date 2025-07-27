@@ -15,7 +15,7 @@ func NewAboutTab() *container.TabItem {
 		return container.New(layout.NewPaddedLayout(), obj)
 	}
 
-	title := canvas.NewText("Blockchain Demo", color.NRGBA{R: 0, G: 120, B: 215, A: 255})
+	title := canvas.NewText("Blockchain demonstration", color.NRGBA{R: 0, G: 120, B: 215, A: 255})
 	title.TextSize = 24
 	title.TextStyle = fyne.TextStyle{Bold: true}
 

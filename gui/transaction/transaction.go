@@ -8,6 +8,8 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"strconv"
 )
@@ -36,12 +38,34 @@ func (t *TransactionUI) createTab() *container.TabItem {
 
 	fromEntry := widget.NewEntryWithData(fromBinding)
 	fromEntry.SetPlaceHolder("Sender address")
+	fromEntry.Validator = func(s string) error {
+		if !core.ValidateAddress(s) && s != "" {
+			return fmt.Errorf("invalid sender address")
+		}
+		return nil
+	}
 
 	toEntry := widget.NewEntryWithData(toBinding)
 	toEntry.SetPlaceHolder("Recipient address")
+	toEntry.Validator = func(s string) error {
+		if !core.ValidateAddress(s) && s != "" {
+			return fmt.Errorf("invalid recipient address")
+		}
+		return nil
+	}
 
 	amountEntry := widget.NewEntryWithData(amountBinding)
-	amountEntry.SetPlaceHolder("Amount")
+	amountEntry.SetPlaceHolder("Amount (integer)")
+	amountEntry.Validator = func(s string) error {
+		if s == "" {
+			return nil
+		}
+		_, err := strconv.Atoi(s)
+		if err != nil {
+			return fmt.Errorf("must be a positive integer")
+		}
+		return nil
+	}
 
 	amountEntry.OnChanged = func(s string) {
 		filtered := ""
@@ -55,7 +79,7 @@ func (t *TransactionUI) createTab() *container.TabItem {
 		}
 	}
 
-	sendBtn := widget.NewButton("Send transaction", func() {
+	sendBtn := widget.NewButtonWithIcon("Send transaction", theme.MailSendIcon(), func() {
 		t.onSendTransaction(fromEntry.Text, toEntry.Text, amountEntry.Text)
 	})
 	sendBtn.Disable()
@@ -65,7 +89,11 @@ func (t *TransactionUI) createTab() *container.TabItem {
 		to, _ := toBinding.Get()
 		amount, _ := amountBinding.Get()
 
-		shouldEnable := from != "" && to != "" && amount != ""
+		shouldEnable := from != "" && to != "" && amount != "" &&
+			fromEntry.Validate() == nil &&
+			toEntry.Validate() == nil &&
+			amountEntry.Validate() == nil
+
 		if shouldEnable {
 			sendBtn.Enable()
 		} else {
@@ -73,57 +101,55 @@ func (t *TransactionUI) createTab() *container.TabItem {
 		}
 	}
 
-	fromBinding.AddListener(binding.NewDataListener(func() { checkInputs() }))
-	toBinding.AddListener(binding.NewDataListener(func() { checkInputs() }))
-	amountBinding.AddListener(binding.NewDataListener(func() { checkInputs() }))
+	fromBinding.AddListener(binding.NewDataListener(checkInputs))
+	toBinding.AddListener(binding.NewDataListener(checkInputs))
+	amountBinding.AddListener(binding.NewDataListener(checkInputs))
 
-	return container.NewTabItem("Transactions",
-		container.NewVBox(
-			widget.NewLabelWithStyle("Send transaction",
-				fyne.TextAlignCenter,
-				fyne.TextStyle{Bold: true}),
+	form := &widget.Form{
+		Items: []*widget.FormItem{
+			{Widget: fromEntry, HintText: "Sender's wallet address"},
+			{Widget: toEntry, HintText: "Recipient's wallet address"},
+			{Widget: amountEntry, HintText: "Amount to send (integer)"},
+		},
+		SubmitText: "",
+		CancelText: "",
+	}
 
-			widget.NewLabel("From address"),
-			fromEntry,
-
-			widget.NewLabel("To address"),
-			toEntry,
-
-			widget.NewLabel("Amount (integer)"),
-			amountEntry,
-
-			t.loadingSpinner,
-			sendBtn,
+	content := container.NewVBox(
+		container.NewCenter(
+			widget.NewLabelWithStyle("Send transaction", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
 		),
+		container.NewPadded(
+			container.NewVBox(
+				container.NewPadded(form),
+				container.NewMax(t.loadingSpinner),
+				container.NewCenter(sendBtn),
+			),
+		),
+		layout.NewSpacer(),
 	)
+
+	return container.NewTabItemWithIcon("Transactions", theme.MailForwardIcon(),
+		container.NewPadded(content))
 }
 
 func (t *TransactionUI) onSendTransaction(from, to, amount string) {
 	defer func() {
 		if r := recover(); r != nil {
 			t.loadingSpinner.Hide()
-			dialog.ShowError(fmt.Errorf("Transaction failed: %v", r), t.window)
+			dialog.ShowError(fmt.Errorf("transaction failed: %v", r), t.window)
 		}
 	}()
 
-	if !core.ValidateAddress(from) {
-		dialog.ShowError(fmt.Errorf("Invalid sender address"), t.window)
-		return
-	}
-	if !core.ValidateAddress(to) {
-		dialog.ShowError(fmt.Errorf("Invalid recipient address"), t.window)
-		return
-	}
-
 	amountInt, err := strconv.Atoi(amount)
 	if err != nil || amountInt <= 0 {
-		dialog.ShowError(fmt.Errorf("Invalid amount"), t.window)
+		dialog.ShowError(fmt.Errorf("invalid amount"), t.window)
 		return
 	}
 
 	subsidy := t.state.Subsidy
 	if subsidy <= 0 {
-		dialog.ShowError(fmt.Errorf("Invalid subsidy"), t.window)
+		dialog.ShowError(fmt.Errorf("invalid subsidy"), t.window)
 		return
 	}
 

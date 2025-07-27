@@ -18,12 +18,13 @@ go run main.go
 ```
 # Requirements
 
-- Go 1.20 or higher
+- Go 1.18 or higher
 - GCC compiler (for OpenGL support used by Fyne)
 
 # About
 
->The blockchain logic is based on the original project Jeiwan/blockchain_go with minor modifications to work with the latest versions of Go and Fyne.
+>A graphical blockchain simulator built with Go and Fyne.
+>Visualizes core concepts like Proof-of-Work, UTXO-based transactions, mining, and block structure in an interactive and educational way.
 
 >The full-featured P2P CLI version updated for the latest Go version is available in the [`p2p-cli`](https://github.com/Iliiasik/Blockchain/tree/p2p-cli) branch.
 

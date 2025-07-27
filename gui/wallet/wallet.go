@@ -2,6 +2,7 @@ package wallet
 
 import (
 	"Blockchain/core"
+	"Blockchain/gui/state"
 	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -9,16 +10,18 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"time"
 )
 
 type WalletUI struct {
 	window     fyne.Window
 	list       *widget.List
 	walletData *core.Wallets
+	state      *state.AppState
 }
 
-func NewWalletTab(window fyne.Window) *container.TabItem {
-	ui := &WalletUI{window: window}
+func NewWalletTab(window fyne.Window, state *state.AppState) *container.TabItem {
+	ui := &WalletUI{window: window, state: state}
 	ui.walletData, _ = core.NewWallets()
 	return ui.createTab()
 }
@@ -98,15 +101,18 @@ func (w *WalletUI) createAddressItem() fyne.CanvasObject {
 
 	copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), nil)
 	checkBtn := widget.NewButtonWithIcon("", theme.InfoIcon(), nil)
+	mineBtn := widget.NewButtonWithIcon("", theme.MediaPlayIcon(), nil)
 
 	copyBtn.Importance = widget.LowImportance
 	checkBtn.Importance = widget.LowImportance
+	mineBtn.Importance = widget.LowImportance
 
 	rightBox := container.NewHBox(
 		balanceLabel,
 		widget.NewSeparator(),
 		checkBtn,
 		copyBtn,
+		mineBtn,
 	)
 
 	return container.NewHBox(addressLabel, layout.NewSpacer(), rightBox)
@@ -131,6 +137,7 @@ func (w *WalletUI) updateAddressItem(i int, item fyne.CanvasObject) {
 	balanceLabel := rightBox.Objects[0].(*widget.Label)
 	checkBtn := rightBox.Objects[2].(*widget.Button)
 	copyBtn := rightBox.Objects[3].(*widget.Button)
+	mineBtn := rightBox.Objects[4].(*widget.Button)
 
 	addressLabel.SetText(address)
 	addressLabel.Refresh()
@@ -156,6 +163,62 @@ func (w *WalletUI) updateAddressItem(i int, item fyne.CanvasObject) {
 		balanceLabel.SetText(fmt.Sprintf("%d coins", balance))
 		balanceLabel.Refresh()
 	}
+	mineBtn.OnTapped = func() {
+		stopAnimation := make(chan struct{})
+		go func() {
+			labels := []string{"Mining 💎 ⛏️", "Mining 💥 ⛏️"}
+			i := 0
+
+			for {
+				select {
+				case <-stopAnimation:
+					return
+				default:
+					fyne.Do(func() {
+						addressLabel.SetText(labels[i%len(labels)])
+						addressLabel.Refresh()
+					})
+					i++
+					time.Sleep(400 * time.Millisecond)
+				}
+			}
+		}()
+
+		go func() {
+			bc, err := core.NewBlockchain()
+			if err != nil {
+				fyne.Do(func() {
+					close(stopAnimation)
+					addressLabel.SetText(address)
+					addressLabel.Refresh()
+
+					dialog.ShowError(err, w.window)
+				})
+				return
+			}
+			defer bc.Db.Close()
+
+			cbTx := core.NewCoinbaseTX(address, "", w.state.Subsidy)
+			block := bc.MineBlock([]*core.Transaction{cbTx}, w.state.TargetBits)
+
+			utxo := core.UTXOSet{bc}
+			utxo.Update(block)
+
+			fyne.Do(func() {
+				close(stopAnimation)
+				addressLabel.SetText(address)
+				addressLabel.Refresh()
+
+				dialog.ShowInformation(
+					"Block Mined",
+					fmt.Sprintf("Successfully mined a new block!\nHash:\n%x", block.Hash),
+					w.window,
+				)
+				w.refreshList()
+			})
+		}()
+	}
+
 }
 
 func (w *WalletUI) getBalance(address string) (int, error) {

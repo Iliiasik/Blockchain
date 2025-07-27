@@ -3,6 +3,7 @@ package app
 import (
 	"Blockchain/gui/about"
 	"Blockchain/gui/blockchain"
+	"Blockchain/gui/p2p_demo"
 	"Blockchain/gui/state"
 	"Blockchain/gui/transaction"
 	"Blockchain/gui/wallet"
@@ -54,9 +55,10 @@ func (b *BlockchainApp) createMainMenu() *fyne.MainMenu {
 func (b *BlockchainApp) createContent() fyne.CanvasObject {
 	tabs := container.NewAppTabs(
 		about.NewAboutTab(),
-		wallet.NewWalletTab(b.window),
+		wallet.NewWalletTab(b.window, b.state),
 		blockchain.NewBlockchainTab(b.window, b.state),
 		transaction.NewTransactionTab(b.window, b.state),
+		p2p_demo.NewP2PDemoTab(b.window, b.state),
 	)
 	tabs.SetTabLocation(container.TabLocationLeading)
 	return tabs
