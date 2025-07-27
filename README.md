@@ -30,9 +30,13 @@ go run main.go
 
 # Interface
 <div align="center">
-  <img width="700" alt="Interface Screenshot 1" src="https://github.com/user-attachments/assets/534e8803-5f9d-49d4-a27a-8651d8a02f82" />
-  
-  <img width="700" alt="Interface Screenshot 2" src="https://github.com/user-attachments/assets/8e5f64b0-7a29-48b5-a100-07816b97e4ba" />
+<img width="700" alt="Interface Screenshot 1" src="https://github.com/user-attachments/assets/358043cb-4267-4075-bc6f-a5c8d38c992c" />
 
-  <img width="700" alt="Interface Screenshot 3" src="https://github.com/user-attachments/assets/27933e89-f26a-4a70-bc9e-773e903a9311" />
+<img width="700" alt="Interface Screenshot 2" src="https://github.com/user-attachments/assets/30261eb9-ba37-4288-b33f-b3cd348f3da6" />
+
+<img width="700" alt="Interface Screenshot 3" src="https://github.com/user-attachments/assets/e3762c8f-2544-45b6-b276-a6713c43ab6e" />
+
+<img width="700" alt="Interface Screenshot 4" src="https://github.com/user-attachments/assets/81f0e8c6-59bd-4697-9547-83eac260e050" />
+
+<img width="700" alt="Interface Screenshot 5" src="https://github.com/user-attachments/assets/108d68b0-5a64-4d3e-b107-4df6699d7438" />
 </div>
