@@ -29,14 +29,7 @@ go run main.go
 >The full-featured P2P CLI version updated for the latest Go version is available in the [`p2p-cli`](https://github.com/Iliiasik/Blockchain/tree/p2p-cli) branch.
 
 # Interface
-<div align="center">
-<img width="700" alt="Interface Screenshot 1" src="https://github.com/user-attachments/assets/358043cb-4267-4075-bc6f-a5c8d38c992c" />
-
-<img width="700" alt="Interface Screenshot 2" src="https://github.com/user-attachments/assets/30261eb9-ba37-4288-b33f-b3cd348f3da6" />
-
-<img width="700" alt="Interface Screenshot 3" src="https://github.com/user-attachments/assets/e3762c8f-2544-45b6-b276-a6713c43ab6e" />
-
-<img width="700" alt="Interface Screenshot 4" src="https://github.com/user-attachments/assets/81f0e8c6-59bd-4697-9547-83eac260e050" />
-
-<img width="700" alt="Interface Screenshot 5" src="https://github.com/user-attachments/assets/108d68b0-5a64-4d3e-b107-4df6699d7438" />
-</div>
+## Main blockchain
+![readme-gif](https://github.com/user-attachments/assets/641c5181-e487-4632-8131-2c4ea3a9690a)
+## P2P network simulation
+![p2p-gif](https://github.com/user-attachments/assets/eda0314f-eb8f-4f7e-bd62-2d989fef8286)
