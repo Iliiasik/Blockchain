@@ -1,7 +1,6 @@
 # Blockchain Demonstration
 
 [![Stars](https://img.shields.io/github/stars/Iliiasik/Blockchain.svg?style=flat&logo=github)](https://github.com/Iliiasik/Blockchain/stargazers)
-[![GitHub all releases](https://img.shields.io/github/downloads/Iliiasik/Blockchain/total?label=Downloads)](https://github.com/Iliiasik/Blockchain/releases)
 
 This application is created to demonstrate the principles of blockchain technology through a graphical user interface (GUI). It is built with Go using the [Fyne](https://fyne.io) toolkit.
 
