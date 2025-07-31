@@ -30,8 +30,8 @@ func (p *P2PDemoUI) forkNode(nodeName string) {
 			defer p.mu.Unlock()
 
 			prevBlock := node.Blocks[len(node.Blocks)-2]
-			tx := core.NewCoinbaseTX("1P2PDemoForkAddress", "Fork on "+nodeName, p.state.Subsidy)
-			forkBlock := core.NewBlock([]*core.Transaction{tx}, prevBlock.Hash, p.state.TargetBits)
+			tx := core.NewCoinbaseTX("1P2PDemoForkAddress", "Fork on "+nodeName, 16)
+			forkBlock := core.NewBlock([]*core.Transaction{tx}, prevBlock.Hash, 10)
 
 			node.Blocks = node.Blocks[:len(node.Blocks)-1]
 			node.Blocks = append(node.Blocks, forkBlock)
@@ -57,8 +57,8 @@ func (p *P2PDemoUI) resetAll() {
 							defer p.mu.Unlock()
 
 							genesisAddress := "1P2PDemoGenesisAddress"
-							genesisTx := core.NewCoinbaseTX(genesisAddress, "Genesis block for P2P Demo", p.state.Subsidy)
-							genesisBlock := core.NewGenesisBlock(genesisTx, p.state.TargetBits)
+							genesisTx := core.NewCoinbaseTX(genesisAddress, "Genesis block for P2P Demo", 10)
+							genesisBlock := core.NewGenesisBlock(genesisTx, 16)
 
 							for _, node := range p.nodes {
 								node.mu.Lock()
@@ -95,7 +95,7 @@ func (p *P2PDemoUI) mineBlock(nodeName string) {
 			prevHash = lastBlock.Hash
 		}
 
-		tx := core.NewCoinbaseTX("1P2PDemoAddress", "Mined on "+nodeName, p.state.Subsidy)
+		tx := core.NewCoinbaseTX("1P2PDemoAddress", "Mined on "+nodeName, 10)
 		block := core.NewBlock([]*core.Transaction{tx}, prevHash, p.localTargetBits)
 
 		fyne.Do(func() {

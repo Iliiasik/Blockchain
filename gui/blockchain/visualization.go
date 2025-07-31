@@ -41,7 +41,7 @@ func (b *BlockchainUI) showBlockDetails(block *core.Block) {
 		container.NewHBox(
 			widget.NewLabel("PoW valid: "),
 			func() fyne.CanvasObject {
-				if core.NewProofOfWork(block, block.Bits).Validate() {
+				if core.NewProofOfWork(block).Validate() {
 					return container.NewHBox(
 						widget.NewIcon(theme.ConfirmIcon()),
 						canvas.NewText("true", color.NRGBA{R: 0, G: 200, B: 0, A: 255}),

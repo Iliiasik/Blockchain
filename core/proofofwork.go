@@ -16,14 +16,13 @@ var (
 type ProofOfWork struct {
 	block  *Block
 	target *big.Int
-	bits   int
 }
 
-func NewProofOfWork(b *Block, bits int) *ProofOfWork {
+func NewProofOfWork(b *Block) *ProofOfWork {
 	target := big.NewInt(1)
-	target.Lsh(target, uint(256-bits))
+	target.Lsh(target, uint(256-b.Bits))
 
-	pow := &ProofOfWork{b, target, bits}
+	pow := &ProofOfWork{b, target}
 	return pow
 }
 
@@ -33,12 +32,11 @@ func (pow *ProofOfWork) prepareData(nonce int) []byte {
 			pow.block.PrevBlockHash,
 			pow.block.HashTransactions(),
 			utils.IntToHex(pow.block.Timestamp),
-			utils.IntToHex(int64(pow.bits)),
+			utils.IntToHex(int64(pow.block.Bits)),
 			utils.IntToHex(int64(nonce)),
 		},
 		[]byte{},
 	)
-
 	return data
 }
 

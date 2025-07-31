@@ -2,7 +2,7 @@ package core
 
 import (
 	"bytes"
-	"encoding/gob"
+	"encoding/binary"
 	"log"
 )
 
@@ -18,7 +18,7 @@ func (out *TXOutput) Lock(address []byte) {
 }
 
 func (out *TXOutput) IsLockedWithKey(pubKeyHash []byte) bool {
-	return bytes.Compare(out.PubKeyHash, pubKeyHash) == 0
+	return bytes.Equal(out.PubKeyHash, pubKeyHash)
 }
 
 func NewTXOutput(value int, address string) *TXOutput {
@@ -33,25 +33,50 @@ type TXOutputs struct {
 }
 
 func (outs TXOutputs) Serialize() []byte {
-	var buff bytes.Buffer
+	var buf bytes.Buffer
 
-	enc := gob.NewEncoder(&buff)
-	err := enc.Encode(outs)
-	if err != nil {
-		log.Panic(err)
+	binary.Write(&buf, binary.LittleEndian, int64(len(outs.Outputs)))
+
+	for _, out := range outs.Outputs {
+		binary.Write(&buf, binary.LittleEndian, int64(out.Value))
+
+		binary.Write(&buf, binary.LittleEndian, int64(len(out.PubKeyHash)))
+		buf.Write(out.PubKeyHash)
 	}
 
-	return buff.Bytes()
+	return buf.Bytes()
 }
 
 func DeserializeOutputs(data []byte) TXOutputs {
-	var outputs TXOutputs
+	var outs TXOutputs
+	buf := bytes.NewReader(data)
 
-	dec := gob.NewDecoder(bytes.NewReader(data))
-	err := dec.Decode(&outputs)
+	var count int64
+	err := binary.Read(buf, binary.LittleEndian, &count)
 	if err != nil {
 		log.Panic(err)
 	}
 
-	return outputs
+	outs.Outputs = make([]TXOutput, count)
+
+	for i := int64(0); i < count; i++ {
+		var val int64
+		binary.Read(buf, binary.LittleEndian, &val)
+
+		var keyLen int64
+		binary.Read(buf, binary.LittleEndian, &keyLen)
+
+		key := make([]byte, keyLen)
+		_, err := buf.Read(key)
+		if err != nil {
+			log.Panic(err)
+		}
+
+		outs.Outputs[i] = TXOutput{
+			Value:      int(val),
+			PubKeyHash: key,
+		}
+	}
+
+	return outs
 }

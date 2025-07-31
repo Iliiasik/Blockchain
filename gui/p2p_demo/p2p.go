@@ -2,7 +2,7 @@ package p2p_demo
 
 import (
 	"Blockchain/core"
-	"Blockchain/gui/state"
+	"Blockchain/resources/icons"
 	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -15,7 +15,6 @@ import (
 
 type P2PDemoUI struct {
 	window             fyne.Window
-	state              *state.AppState
 	nodes              map[string]*P2PNode
 	nodeVisualizations *fyne.Container
 	controls           *fyne.Container
@@ -33,10 +32,9 @@ type P2PNode struct {
 	selected bool
 }
 
-func NewP2PDemoTab(window fyne.Window, state *state.AppState) *container.TabItem {
+func NewP2PDemoTab(window fyne.Window) *container.TabItem {
 	demo := &P2PDemoUI{
 		window:          window,
-		state:           state,
 		nodes:           make(map[string]*P2PNode),
 		localTargetBits: 16,
 	}
@@ -62,7 +60,7 @@ func NewP2PDemoTab(window fyne.Window, state *state.AppState) *container.TabItem
 
 	demo.content = content
 
-	return container.NewTabItemWithIcon("P2P simulation", theme.StorageIcon(), demo.content)
+	return container.NewTabItemWithIcon("P2P simulation", icons.ResourceP2pNetworkPng, demo.content)
 }
 
 func (p *P2PDemoUI) startDemo() {
@@ -80,7 +78,7 @@ func (p *P2PDemoUI) startDemo() {
 
 	go func() {
 		genesisAddress := "1P2PDemoGenesisAddress"
-		genesisTx := core.NewCoinbaseTX(genesisAddress, "Genesis block for P2P Demo", p.state.Subsidy)
+		genesisTx := core.NewCoinbaseTX(genesisAddress, "Genesis block for P2P Demo", 16)
 		genesisBlock := core.NewGenesisBlock(genesisTx, p.localTargetBits)
 
 		fyne.Do(func() {

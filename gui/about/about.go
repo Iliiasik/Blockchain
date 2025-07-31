@@ -1,6 +1,7 @@
 package about
 
 import (
+	"Blockchain/resources/icons"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
@@ -8,6 +9,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"image/color"
+	"net/url"
 )
 
 func NewAboutTab() *container.TabItem {
@@ -19,15 +21,39 @@ func NewAboutTab() *container.TabItem {
 	title.TextSize = 24
 	title.TextStyle = fyne.TextStyle{Bold: true}
 
+	aboutImage := canvas.NewImageFromResource(icons.ResourceAboutPng)
+	aboutImage.FillMode = canvas.ImageFillContain
+	aboutImage.SetMinSize(fyne.NewSize(50, 50))
+
 	header := container.NewHBox(
-		title,
+		container.NewVBox(
+			layout.NewSpacer(),
+			title,
+			layout.NewSpacer(),
+		),
+		container.NewVBox(
+			layout.NewSpacer(),
+			aboutImage,
+			layout.NewSpacer(),
+		),
 	)
+
+	u, _ := url.Parse("https://github.com/Iliiasik/Blockchain")
+	link := widget.NewHyperlink("If you found this project helpful, give it a ⭐ on GitHub", u)
+
 	headerSpacer := container.NewVBox(
 		padded(header),
+		link,
 		widget.NewSeparator(),
 	)
 
+	note := widget.NewLabelWithStyle(
+		"You are welcome to use this project and enhance it for your own implementations",
+		fyne.TextAlignLeading, fyne.TextStyle{Italic: true},
+	)
+
 	featuresTitle := widget.NewLabelWithStyle("Key features", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+
 	features := []struct {
 		icon  fyne.Resource
 		title string
@@ -37,6 +63,9 @@ func NewAboutTab() *container.TabItem {
 		{theme.StorageIcon(), "Transaction creation", "UTXO model implementation"},
 		{theme.ComputerIcon(), "Block mining", "Proof-of-Work simulation"},
 		{theme.ListIcon(), "Chain visualization", "Interactive blockchain explorer"},
+		{theme.SettingsIcon(), "Custom parameters", "Adjustable subsidy and targetBits"},
+		{theme.HistoryIcon(), "Transaction history", "Per-wallet TX log with UTXO tracking"},
+		{theme.AccountIcon(), "P2P simulation", "Basic peer-to-peer block propagation"},
 	}
 
 	featureItems := container.NewVBox()
@@ -84,6 +113,7 @@ func NewAboutTab() *container.TabItem {
 
 	content := container.NewVBox(
 		padded(headerSpacer),
+		padded(note),
 		padded(featuresTitle),
 		padded(featureItems),
 		padded(techTitle),

@@ -3,6 +3,7 @@ package transaction
 import (
 	"Blockchain/core"
 	"Blockchain/gui/state"
+	"Blockchain/resources/icons"
 	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -129,7 +130,7 @@ func (t *TransactionUI) createTab() *container.TabItem {
 		layout.NewSpacer(),
 	)
 
-	return container.NewTabItemWithIcon("Transactions", theme.MailForwardIcon(),
+	return container.NewTabItemWithIcon("Transactions", icons.ResourceTransactionsPng,
 		container.NewPadded(content))
 }
 

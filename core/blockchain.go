@@ -14,7 +14,7 @@ import (
 
 const dbFile = "blockchain.db"
 const blocksBucket = "blocks"
-const genesisCoinbaseData = "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"
+const genesisCoinbaseData = "September 30th, 1998. It's a day I'll never forget. The cop inside me died that day."
 
 type Blockchain struct {
 	tip []byte

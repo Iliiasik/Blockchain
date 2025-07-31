@@ -6,9 +6,9 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	"math/big"
 
-	"encoding/gob"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -25,16 +25,87 @@ func (tx Transaction) IsCoinbase() bool {
 	return len(tx.Vin) == 1 && len(tx.Vin[0].Txid) == 0 && tx.Vin[0].Vout == -1
 }
 
-func (tx Transaction) Serialize() []byte {
-	var encoded bytes.Buffer
+func (tx *Transaction) Serialize() []byte {
+	var buf bytes.Buffer
 
-	enc := gob.NewEncoder(&encoded)
-	err := enc.Encode(tx)
-	if err != nil {
-		log.Panic(err)
+	binary.Write(&buf, binary.LittleEndian, int64(len(tx.ID)))
+	buf.Write(tx.ID)
+
+	binary.Write(&buf, binary.LittleEndian, int64(len(tx.Vin)))
+	for _, input := range tx.Vin {
+		binary.Write(&buf, binary.LittleEndian, int64(len(input.Txid)))
+		buf.Write(input.Txid)
+
+		binary.Write(&buf, binary.LittleEndian, int64(input.Vout))
+
+		binary.Write(&buf, binary.LittleEndian, int64(len(input.Signature)))
+		buf.Write(input.Signature)
+
+		binary.Write(&buf, binary.LittleEndian, int64(len(input.PubKey)))
+		buf.Write(input.PubKey)
 	}
 
-	return encoded.Bytes()
+	binary.Write(&buf, binary.LittleEndian, int64(len(tx.Vout)))
+	for _, output := range tx.Vout {
+		binary.Write(&buf, binary.LittleEndian, int64(output.Value))
+
+		binary.Write(&buf, binary.LittleEndian, int64(len(output.PubKeyHash)))
+		buf.Write(output.PubKeyHash)
+	}
+
+	return buf.Bytes()
+}
+
+func DeserializeTransaction(data []byte) *Transaction {
+	buf := bytes.NewReader(data)
+	tx := Transaction{}
+
+	var idLen int64
+	binary.Read(buf, binary.LittleEndian, &idLen)
+	tx.ID = make([]byte, idLen)
+	buf.Read(tx.ID)
+
+	var vinCount int64
+	binary.Read(buf, binary.LittleEndian, &vinCount)
+	tx.Vin = make([]TXInput, vinCount)
+
+	for i := range tx.Vin {
+		var txidLen int64
+		binary.Read(buf, binary.LittleEndian, &txidLen)
+		tx.Vin[i].Txid = make([]byte, txidLen)
+		buf.Read(tx.Vin[i].Txid)
+
+		var vout int64
+		binary.Read(buf, binary.LittleEndian, &vout)
+		tx.Vin[i].Vout = int(vout)
+
+		var sigLen int64
+		binary.Read(buf, binary.LittleEndian, &sigLen)
+		tx.Vin[i].Signature = make([]byte, sigLen)
+		buf.Read(tx.Vin[i].Signature)
+
+		var pubKeyLen int64
+		binary.Read(buf, binary.LittleEndian, &pubKeyLen)
+		tx.Vin[i].PubKey = make([]byte, pubKeyLen)
+		buf.Read(tx.Vin[i].PubKey)
+	}
+
+	var voutCount int64
+	binary.Read(buf, binary.LittleEndian, &voutCount)
+	tx.Vout = make([]TXOutput, voutCount)
+
+	for i := range tx.Vout {
+		var val int64
+		binary.Read(buf, binary.LittleEndian, &val)
+		tx.Vout[i].Value = int(val)
+
+		var pubKeyHashLen int64
+		binary.Read(buf, binary.LittleEndian, &pubKeyHashLen)
+		tx.Vout[i].PubKeyHash = make([]byte, pubKeyHashLen)
+		buf.Read(tx.Vout[i].PubKeyHash)
+	}
+
+	return &tx
 }
 
 func (tx *Transaction) Hash() []byte {
@@ -209,7 +280,7 @@ func NewUTXOTransaction(from, to string, amount int, UTXOSet *UTXOSet) (*Transac
 
 	outputs = append(outputs, *NewTXOutput(amount, to))
 	if acc > amount {
-		outputs = append(outputs, *NewTXOutput(acc-amount, from)) // a change
+		outputs = append(outputs, *NewTXOutput(acc-amount, from))
 	}
 
 	tx := Transaction{nil, inputs, outputs}

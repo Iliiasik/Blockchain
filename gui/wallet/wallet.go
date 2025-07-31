@@ -3,8 +3,10 @@ package wallet
 import (
 	"Blockchain/core"
 	"Blockchain/gui/state"
+	"Blockchain/resources/icons"
 	"fmt"
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
@@ -55,7 +57,7 @@ func (w *WalletUI) createTab() *container.TabItem {
 		scrollContainer,
 	)
 
-	return container.NewTabItem("Wallets", content)
+	return container.NewTabItemWithIcon("Wallets", icons.ResourceWalletsPng, content)
 }
 
 func (w *WalletUI) onCreateWallet() {
@@ -134,16 +136,44 @@ func (w *WalletUI) updateAddressItem(i int, item fyne.CanvasObject) {
 	addressLabel := row.Objects[0].(*widget.Label)
 	rightBox := row.Objects[2].(*fyne.Container)
 
-	balanceLabel := rightBox.Objects[0].(*widget.Label)
+	var balanceContainer *fyne.Container
+	if len(rightBox.Objects) > 0 {
+		switch obj := rightBox.Objects[0].(type) {
+		case *widget.Label:
+			balanceContainer = container.NewHBox()
+			rightBox.Objects[0] = balanceContainer
+			rightBox.Refresh()
+		case *fyne.Container:
+			balanceContainer = obj
+		default:
+			balanceContainer = container.NewHBox()
+			rightBox.Objects[0] = balanceContainer
+			rightBox.Refresh()
+		}
+	}
+
 	checkBtn := rightBox.Objects[2].(*widget.Button)
 	copyBtn := rightBox.Objects[3].(*widget.Button)
 	mineBtn := rightBox.Objects[4].(*widget.Button)
 
 	addressLabel.SetText(address)
-	addressLabel.Refresh()
 
-	balanceLabel.SetText("")
-	balanceLabel.Refresh()
+	balance, err := w.getBalance(address)
+	if err == nil {
+		coinIcon := canvas.NewImageFromResource(icons.ResourceCoinPng)
+		coinIcon.SetMinSize(fyne.NewSize(40, 40))
+
+		balanceContainer.Objects = []fyne.CanvasObject{
+			widget.NewLabel(fmt.Sprintf("%d", balance)),
+			coinIcon,
+		}
+		balanceContainer.Refresh()
+	} else {
+		balanceContainer.Objects = []fyne.CanvasObject{
+			widget.NewLabel("Create blockchain first"),
+		}
+		balanceContainer.Refresh()
+	}
 
 	copyBtn.OnTapped = func() {
 		w.window.Clipboard().SetContent(address)
@@ -155,13 +185,7 @@ func (w *WalletUI) updateAddressItem(i int, item fyne.CanvasObject) {
 	}
 
 	checkBtn.OnTapped = func() {
-		balance, err := w.getBalance(address)
-		if err != nil {
-			dialog.ShowError(err, w.window)
-			return
-		}
-		balanceLabel.SetText(fmt.Sprintf("%d coins", balance))
-		balanceLabel.Refresh()
+		w.showTransactionHistory(address)
 	}
 	mineBtn.OnTapped = func() {
 		stopAnimation := make(chan struct{})

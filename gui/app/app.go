@@ -6,8 +6,10 @@ import (
 	"Blockchain/gui/p2p_demo"
 	"Blockchain/gui/state"
 	"Blockchain/gui/transaction"
+	"Blockchain/gui/utxo"
 	"Blockchain/gui/wallet"
 	"Blockchain/resources"
+	"Blockchain/resources/icons"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
@@ -22,9 +24,15 @@ type BlockchainApp struct {
 
 func NewBlockchainApp() *BlockchainApp {
 	a := app.NewWithID("blockchain.demo")
-	a.Settings().SetTheme(&resources.CustomTheme{})
+
+	if a.Preferences().BoolWithFallback("DarkMode", false) {
+		a.Settings().SetTheme(&resources.DarkTheme{})
+	} else {
+		a.Settings().SetTheme(&resources.LightTheme{})
+	}
+
 	w := a.NewWindow("Blockchain Demo")
-	w.SetIcon(resources.ResourceIconPng)
+	w.SetIcon(icons.ResourceIconPng)
 	w.Resize(fyne.NewSize(800, 600))
 
 	return &BlockchainApp{
@@ -43,10 +51,23 @@ func (b *BlockchainApp) Run() {
 func (b *BlockchainApp) createMainMenu() *fyne.MainMenu {
 	return fyne.NewMainMenu(
 		fyne.NewMenu("File"),
+		fyne.NewMenu("Theme",
+			fyne.NewMenuItem("Toggle", func() {
+				current := b.app.Settings().Theme()
+				switch current.(type) {
+				case *resources.DarkTheme:
+					b.app.Settings().SetTheme(&resources.LightTheme{})
+					b.app.Preferences().SetBool("DarkMode", false)
+				default:
+					b.app.Settings().SetTheme(&resources.DarkTheme{})
+					b.app.Preferences().SetBool("DarkMode", true)
+				}
+			}),
+		),
 		fyne.NewMenu("Code",
 			fyne.NewMenuItem("GitHub", func() {
 				u, _ := url.Parse("https://github.com/Iliiasik/Blockchain")
-				_ = fyne.CurrentApp().OpenURL(u)
+				_ = b.app.OpenURL(u)
 			}),
 		),
 	)
@@ -58,7 +79,8 @@ func (b *BlockchainApp) createContent() fyne.CanvasObject {
 		wallet.NewWalletTab(b.window, b.state),
 		blockchain.NewBlockchainTab(b.window, b.state),
 		transaction.NewTransactionTab(b.window, b.state),
-		p2p_demo.NewP2PDemoTab(b.window, b.state),
+		utxo.NewUTXOTab(b.window),
+		p2p_demo.NewP2PDemoTab(b.window),
 	)
 	tabs.SetTabLocation(container.TabLocationLeading)
 	return tabs

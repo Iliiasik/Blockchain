@@ -3,6 +3,7 @@ package blockchain
 import (
 	"Blockchain/core"
 	"Blockchain/gui/state"
+	"Blockchain/resources/icons"
 	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -65,12 +66,10 @@ func (b *BlockchainUI) createTab() *container.TabItem {
 	controls := container.NewVBox(
 		widget.NewLabelWithStyle("Blockchain controls", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
 		widget.NewSeparator(),
-		container.NewGridWithColumns(2,
-			widget.NewButtonWithIcon("Create blockchain", theme.ContentAddIcon(), func() {
-				b.createBlockchain(createAddress.Text)
-			}),
-			widget.NewButtonWithIcon("Reindex UTXO", theme.ViewRefreshIcon(), b.onReindexUTXO),
-		),
+		widget.NewButtonWithIcon("Create blockchain", theme.ContentAddIcon(), func() {
+			b.createBlockchain(createAddress.Text)
+		}),
+
 		createAddress,
 		subsidyLabel,
 		subsidySlider,
@@ -84,7 +83,8 @@ func (b *BlockchainUI) createTab() *container.TabItem {
 	scroll := container.NewScroll(b.visualization)
 	scroll.SetMinSize(fyne.NewSize(800, 120))
 
-	return container.NewTabItem("Blockchain",
+	return container.NewTabItemWithIcon("Blockchain",
+		icons.ResourceBlockchainPng,
 		container.NewBorder(
 			controls,
 			nil,

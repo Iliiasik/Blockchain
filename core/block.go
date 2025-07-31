@@ -2,8 +2,7 @@ package core
 
 import (
 	"bytes"
-	"encoding/gob"
-	"log"
+	"encoding/binary"
 	"time"
 )
 
@@ -26,7 +25,7 @@ func NewBlock(transactions []*Transaction, prevBlockHash []byte, targetBits int)
 		Bits:          targetBits,
 	}
 
-	pow := NewProofOfWork(block, targetBits)
+	pow := NewProofOfWork(block)
 	nonce, hash := pow.Run()
 
 	block.Hash = hash[:]
@@ -51,25 +50,64 @@ func (b *Block) HashTransactions() []byte {
 }
 
 func (b *Block) Serialize() []byte {
-	var result bytes.Buffer
-	encoder := gob.NewEncoder(&result)
+	var buf bytes.Buffer
 
-	err := encoder.Encode(b)
-	if err != nil {
-		log.Panic(err)
+	binary.Write(&buf, binary.LittleEndian, b.Timestamp)
+	binary.Write(&buf, binary.LittleEndian, int64(len(b.Transactions)))
+
+	for _, tx := range b.Transactions {
+		txData := tx.Serialize()
+		binary.Write(&buf, binary.LittleEndian, int64(len(txData)))
+		buf.Write(txData)
 	}
 
-	return result.Bytes()
+	binary.Write(&buf, binary.LittleEndian, int64(len(b.PrevBlockHash)))
+	buf.Write(b.PrevBlockHash)
+
+	binary.Write(&buf, binary.LittleEndian, int64(len(b.Hash)))
+	buf.Write(b.Hash)
+
+	binary.Write(&buf, binary.LittleEndian, int64(b.Nonce))
+	binary.Write(&buf, binary.LittleEndian, int64(b.Bits))
+
+	return buf.Bytes()
 }
 
-func DeserializeBlock(d []byte) *Block {
-	var block Block
+func DeserializeBlock(data []byte) *Block {
+	buf := bytes.NewReader(data)
+	block := Block{}
 
-	decoder := gob.NewDecoder(bytes.NewReader(d))
-	err := decoder.Decode(&block)
-	if err != nil {
-		log.Panic(err)
+	binary.Read(buf, binary.LittleEndian, &block.Timestamp)
+
+	var txCount int64
+	binary.Read(buf, binary.LittleEndian, &txCount)
+	block.Transactions = make([]*Transaction, txCount)
+
+	for i := int64(0); i < txCount; i++ {
+		var txLen int64
+		binary.Read(buf, binary.LittleEndian, &txLen)
+		txData := make([]byte, txLen)
+		buf.Read(txData)
+		block.Transactions[i] = DeserializeTransaction(txData)
 	}
+
+	var prevHashLen int64
+	binary.Read(buf, binary.LittleEndian, &prevHashLen)
+	block.PrevBlockHash = make([]byte, prevHashLen)
+	buf.Read(block.PrevBlockHash)
+
+	var hashLen int64
+	binary.Read(buf, binary.LittleEndian, &hashLen)
+	block.Hash = make([]byte, hashLen)
+	buf.Read(block.Hash)
+
+	var nonce int64
+	binary.Read(buf, binary.LittleEndian, &nonce)
+	block.Nonce = int(nonce)
+
+	var bits int64
+	binary.Read(buf, binary.LittleEndian, &bits)
+	block.Bits = int(bits)
 
 	return &block
 }
