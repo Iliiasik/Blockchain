@@ -38,9 +38,9 @@ fyne install github.com/Iliiasik/Blockchain@latest
 
 # Interface
 ## Main blockchain
-![readme-part-1](https://github.com/user-attachments/assets/087540d1-2251-4113-9c31-b5895992dce5)
+![readme-part-1](https://github.com/user-attachments/assets/87c12218-0aa0-4f9f-8895-f86cd808865d)
 ---
-![readme-part-2](https://github.com/user-attachments/assets/529f43ba-5d78-4580-94c0-ce1e6ae3ed0a)
+![readme-part-2](https://github.com/user-attachments/assets/9dafd324-3835-43a4-a7cd-a216e1311323)
 ## P2P network simulation
 ![readme-part-3](https://github.com/user-attachments/assets/966e18a2-e259-47ab-a187-268ab39a314e)
 
