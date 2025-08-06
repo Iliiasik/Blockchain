@@ -4,17 +4,25 @@
 
 This application is created to demonstrate the principles of blockchain technology through a graphical user interface (GUI). It is built with Go using the [Fyne](https://fyne.io) toolkit.
 
-You can either download the release or clone the project:
+You can either download the release, clone the project, or install it directly via fyne:
 
 ```bash
+# clone
 git clone https://github.com/Iliiasik/Blockchain.git
-```
 
->To run the application, simply execute:
-
-```bash
+# run
 go run main.go
 ```
+Alternatively, you can install and run the application directly using fyne:
+
+```bash
+# Install the fyne CLI tool (if you don't have it yet)
+go install fyne.io/tools/cmd/fyne@latest
+
+# Install the Blockchain app via fyne
+fyne install github.com/Iliiasik/Blockchain@latest
+```
+
 # Requirements
 
 - Go 1.18 or higher
@@ -30,6 +38,9 @@ go run main.go
 
 # Interface
 ## Main blockchain
-![readme-gif](https://github.com/user-attachments/assets/641c5181-e487-4632-8131-2c4ea3a9690a)
+![readme-part-1](https://github.com/user-attachments/assets/087540d1-2251-4113-9c31-b5895992dce5)
+---
+![readme-part-2](https://github.com/user-attachments/assets/529f43ba-5d78-4580-94c0-ce1e6ae3ed0a)
 ## P2P network simulation
-![p2p-gif](https://github.com/user-attachments/assets/eda0314f-eb8f-4f7e-bd62-2d989fef8286)
+![readme-part-3](https://github.com/user-attachments/assets/966e18a2-e259-47ab-a187-268ab39a314e)
+
