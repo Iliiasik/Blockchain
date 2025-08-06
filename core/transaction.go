@@ -7,11 +7,10 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
-	"math/big"
-
 	"encoding/hex"
 	"fmt"
 	"log"
+	"math/big"
 	"strings"
 )
 
@@ -19,6 +18,7 @@ type Transaction struct {
 	ID   []byte
 	Vin  []TXInput
 	Vout []TXOutput
+	Fee  int
 }
 
 func (tx Transaction) IsCoinbase() bool {
@@ -52,6 +52,8 @@ func (tx *Transaction) Serialize() []byte {
 		binary.Write(&buf, binary.LittleEndian, int64(len(output.PubKeyHash)))
 		buf.Write(output.PubKeyHash)
 	}
+
+	binary.Write(&buf, binary.LittleEndian, int64(tx.Fee))
 
 	return buf.Bytes()
 }
@@ -105,6 +107,10 @@ func DeserializeTransaction(data []byte) *Transaction {
 		buf.Read(tx.Vout[i].PubKeyHash)
 	}
 
+	var fee int64
+	binary.Read(buf, binary.LittleEndian, &fee)
+	tx.Fee = int(fee)
+
 	return &tx
 }
 
@@ -155,7 +161,6 @@ func (tx Transaction) String() string {
 	lines = append(lines, fmt.Sprintf("--- Transaction %x:", tx.ID))
 
 	for i, input := range tx.Vin {
-
 		lines = append(lines, fmt.Sprintf("     Input %d:", i))
 		lines = append(lines, fmt.Sprintf("       TXID:      %x", input.Txid))
 		lines = append(lines, fmt.Sprintf("       Out:       %d", input.Vout))
@@ -168,6 +173,8 @@ func (tx Transaction) String() string {
 		lines = append(lines, fmt.Sprintf("       Value:  %d", output.Value))
 		lines = append(lines, fmt.Sprintf("       Script: %x", output.PubKeyHash))
 	}
+
+	lines = append(lines, fmt.Sprintf("     Fee: %d", tx.Fee))
 
 	return strings.Join(lines, "\n")
 }
@@ -184,8 +191,7 @@ func (tx *Transaction) TrimmedCopy() Transaction {
 		outputs = append(outputs, TXOutput{vout.Value, vout.PubKeyHash})
 	}
 
-	txCopy := Transaction{tx.ID, inputs, outputs}
-
+	txCopy := Transaction{tx.ID, inputs, outputs, tx.Fee}
 	return txCopy
 }
 
@@ -238,19 +244,18 @@ func NewCoinbaseTX(to, data string, subsidy int) *Transaction {
 		if err != nil {
 			log.Panic(err)
 		}
-
 		data = fmt.Sprintf("%x", randData)
 	}
 
 	txin := TXInput{[]byte{}, -1, nil, []byte(data)}
 	txout := NewTXOutput(subsidy, to)
-	tx := Transaction{nil, []TXInput{txin}, []TXOutput{*txout}}
+	tx := Transaction{nil, []TXInput{txin}, []TXOutput{*txout}, 0}
 	tx.ID = tx.Hash()
 
 	return &tx
 }
 
-func NewUTXOTransaction(from, to string, amount int, UTXOSet *UTXOSet) (*Transaction, error) {
+func NewUTXOTransaction(from, to string, amount int, fee int, UTXOSet *UTXOSet) (*Transaction, error) {
 	var inputs []TXInput
 	var outputs []TXOutput
 
@@ -260,10 +265,19 @@ func NewUTXOTransaction(from, to string, amount int, UTXOSet *UTXOSet) (*Transac
 	}
 	wallet := wallets.GetWallet(from)
 	pubKeyHash := HashPubKey(wallet.PublicKey)
-	acc, validOutputs := UTXOSet.FindSpendableOutputs(pubKeyHash, amount)
 
-	if acc < amount {
-		return nil, fmt.Errorf("not enough funds")
+	senderAddress := PubKeyToAddress(wallet.PublicKey)
+	for _, tx := range UTXOSet.Blockchain.Mempool.GetTransactions() {
+		txSender := tx.GetSenderAddress()
+		if txSender == senderAddress {
+			return nil, fmt.Errorf("wallet already has pending transaction")
+		}
+	}
+
+	acc, validOutputs := UTXOSet.FindSpendableOutputs(pubKeyHash, amount+fee)
+
+	if acc < amount+fee {
+		return nil, fmt.Errorf("not enough funds: need %d, available %d", amount+fee, acc)
 	}
 
 	for txid, outs := range validOutputs {
@@ -279,13 +293,17 @@ func NewUTXOTransaction(from, to string, amount int, UTXOSet *UTXOSet) (*Transac
 	}
 
 	outputs = append(outputs, *NewTXOutput(amount, to))
-	if acc > amount {
-		outputs = append(outputs, *NewTXOutput(acc-amount, from))
+	if acc > amount+fee {
+		outputs = append(outputs, *NewTXOutput(acc-amount-fee, from))
 	}
 
-	tx := Transaction{nil, inputs, outputs}
+	tx := Transaction{nil, inputs, outputs, fee}
 	tx.ID = tx.Hash()
 	UTXOSet.Blockchain.SignTransaction(&tx, wallet.PrivateKey)
+
+	if !UTXOSet.Blockchain.Mempool.AddTransaction(&tx) {
+		return nil, fmt.Errorf("mempool is full")
+	}
 
 	return &tx, nil
 }

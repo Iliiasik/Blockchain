@@ -17,8 +17,9 @@ const blocksBucket = "blocks"
 const genesisCoinbaseData = "September 30th, 1998. It's a day I'll never forget. The cop inside me died that day."
 
 type Blockchain struct {
-	tip []byte
-	Db  *bolt.DB
+	tip     []byte
+	Db      *bolt.DB
+	Mempool *Mempool
 }
 
 func CreateBlockchain(address string, subsidy int, targetBits int) (*Blockchain, error) {
@@ -29,7 +30,6 @@ func CreateBlockchain(address string, subsidy int, targetBits int) (*Blockchain,
 	var tip []byte
 
 	cbtx := NewCoinbaseTX(address, genesisCoinbaseData, subsidy)
-
 	genesis := NewGenesisBlock(cbtx, targetBits)
 
 	db, err := bolt.Open(dbFile, 0600, nil)
@@ -58,18 +58,13 @@ func CreateBlockchain(address string, subsidy int, targetBits int) (*Blockchain,
 		return nil, err
 	}
 
-	fmt.Printf("Blockchain created successfully!\n")
-	fmt.Printf("Genesis block hash: %x\n", tip)
-	fmt.Printf("Mining difficulty: %d bits\n", targetBits)
-	fmt.Printf("Block reward (subsidy): %d\n", subsidy)
-
-	bc := Blockchain{tip, db}
+	bc := Blockchain{tip, db, NewMempool(10)}
 	return &bc, nil
 }
 
 func NewBlockchain() (*Blockchain, error) {
 	if !dbExists() {
-		return nil, fmt.Errorf("No existing blockchain found. Create one first")
+		return nil, fmt.Errorf("no existing blockchain found. Create one first")
 	}
 
 	db, err := bolt.Open(dbFile, 0600, nil)
@@ -81,7 +76,7 @@ func NewBlockchain() (*Blockchain, error) {
 	err = db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 		if b == nil {
-			return fmt.Errorf("Blocks bucket not found")
+			return fmt.Errorf("blocks bucket not found")
 		}
 		tip = b.Get([]byte("l"))
 		return nil
@@ -90,7 +85,7 @@ func NewBlockchain() (*Blockchain, error) {
 		return nil, err
 	}
 
-	bc := Blockchain{tip, db}
+	bc := Blockchain{tip, db, NewMempool(10)}
 	return &bc, nil
 }
 
@@ -127,7 +122,6 @@ func (bc *Blockchain) FindUTXO() map[string]TXOutputs {
 
 		Outputs:
 			for outIdx, out := range tx.Vout {
-				// Was the output spent?
 				if spentTXOs[txID] != nil {
 					for _, spentOutIdx := range spentTXOs[txID] {
 						if spentOutIdx == outIdx {
@@ -163,15 +157,21 @@ func (bc *Blockchain) Iterator() *BlockchainIterator {
 	return bci
 }
 
-func (bc *Blockchain) MineBlock(transactions []*Transaction, currentBits int) *Block {
-	var lastHash []byte
-	var lastBits int
+func (bc *Blockchain) MineBlock(transactions []*Transaction, targetBits int) *Block {
+	if len(transactions) == 0 || !transactions[0].IsCoinbase() {
+		log.Println("Block must start with coinbase transaction")
+		return nil
+	}
 
-	for _, tx := range transactions {
-		if !bc.VerifyTransaction(tx) {
-			log.Panic("ERROR: Invalid transaction")
+	for i, tx := range transactions {
+		if i > 0 && !bc.VerifyTransaction(tx) {
+			log.Printf("Invalid transaction: %x", tx.ID)
+			return nil
 		}
 	}
+
+	var lastHash []byte
+	var lastBits int
 
 	err := bc.Db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
@@ -184,10 +184,10 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction, currentBits int) *B
 		return nil
 	})
 	if err != nil {
-		log.Panic(err)
+		log.Printf("Error getting last block: %v", err)
+		return nil
 	}
 
-	targetBits := currentBits
 	if targetBits == 0 {
 		targetBits = lastBits
 	}
@@ -206,7 +206,14 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction, currentBits int) *B
 		return nil
 	})
 	if err != nil {
-		log.Panic(err)
+		log.Printf("Error saving block: %v", err)
+		return nil
+	}
+
+	for _, tx := range transactions {
+		if !tx.IsCoinbase() {
+			bc.Mempool.RemoveTransaction(hex.EncodeToString(tx.ID))
+		}
 	}
 
 	return newBlock

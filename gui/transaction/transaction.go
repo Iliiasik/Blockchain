@@ -13,13 +13,12 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"strconv"
+	"strings"
 )
 
 type TransactionUI struct {
-	window         fyne.Window
-	state          *state.AppState
-	blocks         []*core.Block
-	loadingSpinner *widget.ProgressBarInfinite
+	window fyne.Window
+	state  *state.AppState
 }
 
 func NewTransactionTab(window fyne.Window, state *state.AppState) *container.TabItem {
@@ -27,8 +26,6 @@ func NewTransactionTab(window fyne.Window, state *state.AppState) *container.Tab
 		window: window,
 		state:  state,
 	}
-	ui.loadingSpinner = widget.NewProgressBarInfinite()
-	ui.loadingSpinner.Hide()
 	return ui.createTab()
 }
 
@@ -36,6 +33,8 @@ func (t *TransactionUI) createTab() *container.TabItem {
 	fromBinding := binding.NewString()
 	toBinding := binding.NewString()
 	amountBinding := binding.NewString()
+	feeBinding := binding.NewString()
+	feeBinding.Set("0")
 
 	fromEntry := widget.NewEntryWithData(fromBinding)
 	fromEntry.SetPlaceHolder("Sender address")
@@ -68,6 +67,19 @@ func (t *TransactionUI) createTab() *container.TabItem {
 		return nil
 	}
 
+	feeEntry := widget.NewEntryWithData(feeBinding)
+	feeEntry.SetPlaceHolder("Fee (integer)")
+	feeEntry.Validator = func(s string) error {
+		if s == "" {
+			return nil
+		}
+		_, err := strconv.Atoi(s)
+		if err != nil || s[0] == '-' {
+			return fmt.Errorf("must be a non-negative integer")
+		}
+		return nil
+	}
+
 	amountEntry.OnChanged = func(s string) {
 		filtered := ""
 		for _, r := range s {
@@ -80,8 +92,21 @@ func (t *TransactionUI) createTab() *container.TabItem {
 		}
 	}
 
+	feeEntry.OnChanged = func(s string) {
+		filtered := ""
+		for _, r := range s {
+			if r >= '0' && r <= '9' {
+				filtered += string(r)
+			}
+		}
+		if s != filtered {
+			feeEntry.SetText(filtered)
+		}
+	}
+
 	sendBtn := widget.NewButtonWithIcon("Send transaction", theme.MailSendIcon(), func() {
-		t.onSendTransaction(fromEntry.Text, toEntry.Text, amountEntry.Text)
+		fee, _ := feeBinding.Get()
+		t.onSendTransaction(fromEntry.Text, toEntry.Text, amountEntry.Text, fee)
 	})
 	sendBtn.Disable()
 
@@ -89,11 +114,13 @@ func (t *TransactionUI) createTab() *container.TabItem {
 		from, _ := fromBinding.Get()
 		to, _ := toBinding.Get()
 		amount, _ := amountBinding.Get()
+		fee, _ := feeBinding.Get()
 
-		shouldEnable := from != "" && to != "" && amount != "" &&
+		shouldEnable := from != "" && to != "" && amount != "" && fee != "" &&
 			fromEntry.Validate() == nil &&
 			toEntry.Validate() == nil &&
-			amountEntry.Validate() == nil
+			amountEntry.Validate() == nil &&
+			feeEntry.Validate() == nil
 
 		if shouldEnable {
 			sendBtn.Enable()
@@ -105,12 +132,14 @@ func (t *TransactionUI) createTab() *container.TabItem {
 	fromBinding.AddListener(binding.NewDataListener(checkInputs))
 	toBinding.AddListener(binding.NewDataListener(checkInputs))
 	amountBinding.AddListener(binding.NewDataListener(checkInputs))
+	feeBinding.AddListener(binding.NewDataListener(checkInputs))
 
 	form := &widget.Form{
 		Items: []*widget.FormItem{
 			{Widget: fromEntry, HintText: "Sender's wallet address"},
 			{Widget: toEntry, HintText: "Recipient's wallet address"},
 			{Widget: amountEntry, HintText: "Amount to send (integer)"},
+			{Widget: feeEntry, HintText: "Transaction fee (integer, min 0)"},
 		},
 		SubmitText: "",
 		CancelText: "",
@@ -123,7 +152,6 @@ func (t *TransactionUI) createTab() *container.TabItem {
 		container.NewPadded(
 			container.NewVBox(
 				container.NewPadded(form),
-				container.NewMax(t.loadingSpinner),
 				container.NewCenter(sendBtn),
 			),
 		),
@@ -134,58 +162,60 @@ func (t *TransactionUI) createTab() *container.TabItem {
 		container.NewPadded(content))
 }
 
-func (t *TransactionUI) onSendTransaction(from, to, amount string) {
+func (t *TransactionUI) onSendTransaction(from, to, amount, fee string) {
 	defer func() {
 		if r := recover(); r != nil {
-			t.loadingSpinner.Hide()
-			dialog.ShowError(fmt.Errorf("transaction failed: %v", r), t.window)
+			dialog.ShowError(fmt.Errorf("Transaction failed: %v", r), t.window)
 		}
 	}()
 
 	amountInt, err := strconv.Atoi(amount)
 	if err != nil || amountInt <= 0 {
-		dialog.ShowError(fmt.Errorf("invalid amount"), t.window)
+		dialog.ShowError(fmt.Errorf("Amount must be a positive integer"), t.window)
 		return
 	}
 
-	subsidy := t.state.Subsidy
-	if subsidy <= 0 {
-		dialog.ShowError(fmt.Errorf("invalid subsidy"), t.window)
+	feeInt, err := strconv.Atoi(fee)
+	if err != nil || feeInt < 0 {
+		dialog.ShowError(fmt.Errorf("Fee must be a non-negative integer"), t.window)
 		return
 	}
-
-	t.loadingSpinner.Show()
 
 	go func() {
 		bc, err := core.NewBlockchain()
 		if err != nil {
 			fyne.Do(func() {
-				t.loadingSpinner.Hide()
-				dialog.ShowError(err, t.window)
+				dialog.ShowError(fmt.Errorf("Failed to access blockchain: %v", err), t.window)
 			})
 			return
 		}
 		defer bc.Db.Close()
 
 		UTXOSet := core.UTXOSet{bc}
-		tx, err := core.NewUTXOTransaction(from, to, amountInt, &UTXOSet)
+		_, err = core.NewUTXOTransaction(from, to, amountInt, feeInt, &UTXOSet)
 		if err != nil {
+			var errorMsg string
+			switch {
+			case strings.Contains(err.Error(), "wallet already has pending transaction"):
+				errorMsg = "Your wallet already has a pending transaction.\nPlease mine a block to confirm it before sending another."
+			case strings.Contains(err.Error(), "mempool is full"):
+				errorMsg = "The mempool is full. Please wait until some transactions are mined."
+			default:
+				errorMsg = fmt.Sprintf("Transaction creation failed: %v", err)
+			}
+
 			fyne.Do(func() {
-				t.loadingSpinner.Hide()
-				dialog.ShowError(err, t.window)
+				dialog.ShowError(fmt.Errorf(errorMsg), t.window)
 			})
 			return
 		}
 
-		cbTx := core.NewCoinbaseTX(from, "", subsidy)
-		newBlock := bc.MineBlock([]*core.Transaction{cbTx, tx}, t.state.TargetBits)
-		UTXOSet.Update(newBlock)
-
 		fyne.Do(func() {
-			t.loadingSpinner.Hide()
-			dialog.ShowInformation("Success",
-				fmt.Sprintf("Transaction sent!\nNew block mined: %x", newBlock.Hash),
-				t.window)
+			dialog.ShowInformation(
+				"Transaction Sent",
+				fmt.Sprintf("Amount: %d\nFee: %d", amountInt, feeInt),
+				t.window,
+			)
 		})
 	}()
 }

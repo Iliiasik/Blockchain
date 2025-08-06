@@ -184,3 +184,26 @@ func (u UTXOSet) Update(block *Block) {
 		log.Panic(err)
 	}
 }
+
+func (u UTXOSet) FindAvailableUTXO(pubKeyHash []byte) []TXOutput {
+	var availableUTXOs []TXOutput
+	db := u.Blockchain.Db
+	_ = db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(utxoBucket))
+		c := b.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			txID := hex.EncodeToString(k)
+			outs := DeserializeOutputs(v)
+			for idx, out := range outs.Outputs {
+				if out.IsLockedWithKey(pubKeyHash) {
+					if u.Blockchain.Mempool.IsOutputSpent(txID, idx) {
+						continue
+					}
+					availableUTXOs = append(availableUTXOs, out)
+				}
+			}
+		}
+		return nil
+	})
+	return availableUTXOs
+}

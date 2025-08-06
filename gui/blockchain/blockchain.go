@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -30,8 +31,19 @@ func NewBlockchainTab(window fyne.Window, state *state.AppState) *container.TabI
 }
 
 func (b *BlockchainUI) createTab() *container.TabItem {
-	createAddress := widget.NewEntry()
+	addressBinding := binding.NewString()
+
+	createAddress := widget.NewEntryWithData(addressBinding)
 	createAddress.SetPlaceHolder("Genesis address")
+	createAddress.Validator = func(s string) error {
+		if s == "" {
+			return nil
+		}
+		if !core.ValidateAddress(s) {
+			return fmt.Errorf("invalid address format")
+		}
+		return nil
+	}
 
 	subsidyLabel := widget.NewLabel(fmt.Sprintf("Block reward (subsidy): %d", b.state.Subsidy))
 	subsidySlider := widget.NewSlider(1, 100)
@@ -60,16 +72,32 @@ func (b *BlockchainUI) createTab() *container.TabItem {
 				b.window)
 		}
 	}
+
 	b.loadingSpinner = widget.NewProgressBarInfinite()
 	b.loadingSpinner.Hide()
+
+	createBtn := widget.NewButtonWithIcon("Create blockchain", theme.ContentAddIcon(), func() {
+		address, _ := addressBinding.Get()
+		b.createBlockchain(address)
+	})
+	createBtn.Disable()
+
+	checkInput := func() {
+		address, _ := addressBinding.Get()
+		shouldEnable := address != "" && createAddress.Validate() == nil
+		if shouldEnable {
+			createBtn.Enable()
+		} else {
+			createBtn.Disable()
+		}
+	}
+
+	addressBinding.AddListener(binding.NewDataListener(checkInput))
 
 	controls := container.NewVBox(
 		widget.NewLabelWithStyle("Blockchain controls", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
 		widget.NewSeparator(),
-		widget.NewButtonWithIcon("Create blockchain", theme.ContentAddIcon(), func() {
-			b.createBlockchain(createAddress.Text)
-		}),
-
+		createBtn,
 		createAddress,
 		subsidyLabel,
 		subsidySlider,
@@ -100,16 +128,6 @@ func (b *BlockchainUI) createTab() *container.TabItem {
 }
 
 func (b *BlockchainUI) createBlockchain(address string) {
-	if address == "" {
-		dialog.ShowError(fmt.Errorf("please enter a genesis address"), b.window)
-		return
-	}
-
-	if !core.ValidateAddress(address) {
-		dialog.ShowError(fmt.Errorf("invalid address format"), b.window)
-		return
-	}
-
 	if b.state.TargetBits > 20 {
 		dialog.ShowConfirm("High Difficulty Warning",
 			fmt.Sprintf("Mining with difficulty %d may take VERY LONG TIME!\nAre you sure?", b.state.TargetBits),
