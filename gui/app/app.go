@@ -8,6 +8,7 @@ import (
 	"Blockchain/gui/transaction"
 	"Blockchain/gui/utxo"
 	"Blockchain/gui/wallet"
+	"Blockchain/gui/wiki"
 	"Blockchain/resources"
 	"Blockchain/resources/icons"
 	"fyne.io/fyne/v2"
@@ -33,7 +34,7 @@ func NewBlockchainApp() *BlockchainApp {
 
 	w := a.NewWindow("Blockchain Demo")
 	w.SetIcon(icons.ResourceIconPng)
-	w.Resize(fyne.NewSize(800, 600))
+	w.Resize(fyne.NewSize(800, 650))
 
 	return &BlockchainApp{
 		app:    a,
@@ -81,6 +82,7 @@ func (b *BlockchainApp) createContent() fyne.CanvasObject {
 		transaction.NewTransactionTab(b.window, b.state),
 		utxo.NewUTXOTab(b.window),
 		p2p_demo.NewP2PDemoTab(b.window),
+		wiki.NewWikiTab(),
 	)
 	tabs.SetTabLocation(container.TabLocationLeading)
 	return tabs

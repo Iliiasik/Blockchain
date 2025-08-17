@@ -4,5 +4,5 @@ Website = "https://github.com/Iliiasik/Blockchain"
   Icon = "resources/icons/icon.png"
   Name = "Blockchain Demo"
   ID = "com.iliiasik.blockchain"
-  Version = "1.6.0"
+  Version = "1.6.2"
   Build = 6

@@ -52,6 +52,11 @@ func NewAboutTab() *container.TabItem {
 		fyne.TextAlignLeading, fyne.TextStyle{Italic: true},
 	)
 
+	wikiNote := widget.NewLabelWithStyle(
+		"You can find theoretical information in the Wiki tab and the technical implementation on GitHub",
+		fyne.TextAlignLeading, fyne.TextStyle{Italic: true},
+	)
+
 	featuresTitle := widget.NewLabelWithStyle("Key features", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
 	features := []struct {
@@ -114,6 +119,7 @@ func NewAboutTab() *container.TabItem {
 	content := container.NewVBox(
 		padded(headerSpacer),
 		padded(note),
+		padded(wikiNote),
 		padded(featuresTitle),
 		padded(featureItems),
 		padded(techTitle),

@@ -5,6 +5,7 @@ go 1.23.5
 require (
 	fyne.io/fyne/v2 v2.6.1
 	github.com/boltdb/bolt v1.3.1
+	github.com/gomarkdown/markdown v0.0.0-20250810172220-2e2c11897d1a
 	golang.org/x/crypto v0.40.0
 )
 
