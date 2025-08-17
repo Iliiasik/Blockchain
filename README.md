@@ -43,4 +43,8 @@ fyne install github.com/Iliiasik/Blockchain@latest
 ![readme-part-2](https://github.com/user-attachments/assets/9dafd324-3835-43a4-a7cd-a216e1311323)
 ## P2P network simulation
 ![readme-part-3](https://github.com/user-attachments/assets/966e18a2-e259-47ab-a187-268ab39a314e)
+---
+## Wiki
+<img alt="Wiki" src="https://github.com/user-attachments/assets/dbe993b8-0e8b-48d3-8866-15150486c53a" />
+
 
