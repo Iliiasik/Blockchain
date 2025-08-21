@@ -13,7 +13,7 @@ git clone https://github.com/Iliiasik/Blockchain.git
 # run
 go run main.go
 ```
-Alternatively, you can install and run the application directly using fyne:
+Install and run the application directly using fyne:
 
 ```bash
 # Install the fyne CLI tool (if you don't have it yet)
@@ -47,4 +47,6 @@ fyne install github.com/Iliiasik/Blockchain@latest
 ## Wiki
 <img alt="Wiki" src="https://github.com/user-attachments/assets/dbe993b8-0e8b-48d3-8866-15150486c53a" />
 
+## License
 
+MIT © [Iliiasik](https://github.com/Iliiasik)
