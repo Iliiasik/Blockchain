@@ -1,4 +1,4 @@
-# Blockchain Demonstration
+# Blockchain Learning GUI
 
 [![Stars](https://img.shields.io/github/stars/Iliiasik/Blockchain.svg?style=flat&logo=github)](https://github.com/Iliiasik/Blockchain/stargazers)
 [![Downloads](https://img.shields.io/github/downloads/Iliiasik/Blockchain/total.svg?style=flat&logo=github)](https://github.com/Iliiasik/Blockchain/releases)
