@@ -36,9 +36,6 @@ fyne install github.com/Iliiasik/Blockchain@latest
 
 >A graphical blockchain simulator built with Go and Fyne.
 >Visualizes core concepts like Proof-of-Work, UTXO-based transactions, mining, mempool, wallets, and block structure in an interactive and educational way.
-> **[More →](https://github.com/Iliiasik/Blockchain/wiki)**
-
-> P2P CLI version updated for the latest Go version is available in the [`p2p-cli`](https://github.com/Iliiasik/Blockchain/tree/p2p-cli) branch.
 
 # Interface
 ## Main blockchain
@@ -51,6 +48,6 @@ fyne install github.com/Iliiasik/Blockchain@latest
 ## Wiki
 <img alt="Wiki" src="https://github.com/user-attachments/assets/dbe993b8-0e8b-48d3-8866-15150486c53a" />
 
-## License
+---
 
-MIT © [Iliiasik](https://github.com/Iliiasik)
+>⭐ Leave a star if this project was helpful
