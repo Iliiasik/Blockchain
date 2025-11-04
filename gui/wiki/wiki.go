@@ -119,107 +119,147 @@ func (ui *WikiUI) loadPages() {
 }
 
 func (ui *WikiUI) loadPage(idx int) {
+	ui.showLoadingIndicator()
+	go func() {
+		page := &ui.pages[idx]
+		if !ui.loadPageContent(page) {
+			return
+		}
+		contentObjs := ui.parsePageContent(page.Content)
+		fyne.Do(func() {
+			ui.renderPage(idx, page, contentObjs)
+		})
+	}()
+}
+
+func (ui *WikiUI) showLoadingIndicator() {
 	fyne.Do(func() {
 		loadingLabel := widget.NewLabel("Loading page content...")
 		icon := widget.NewIcon(theme.GridIcon())
 		ui.tab.Content = container.NewCenter(container.NewHBox(loadingLabel, icon))
 	})
+}
 
-	go func() {
-		page := &ui.pages[idx]
+func (ui *WikiUI) loadPageContent(page *Page) bool {
+	if page.Content != "" {
+		return true
+	}
+	data, err := wikiFS.ReadFile("pages/" + page.FileName)
+	if err != nil {
+		fmt.Println("Error reading file:", page.FileName, err)
+		return false
+	}
+	page.Content = string(data)
+	return true
+}
 
-		if page.Content == "" {
-			data, err := wikiFS.ReadFile("pages/" + page.FileName)
-			if err != nil {
-				fmt.Println("Error reading file:", page.FileName, err)
-				return
-			}
-			page.Content = string(data)
+func (ui *WikiUI) parsePageContent(content string) []fyne.CanvasObject {
+	var contentObjs []fyne.CanvasObject
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		if ui.processImageLine(line, &contentObjs) {
+			continue
 		}
+		contentObjs = append(contentObjs, widget.NewRichTextFromMarkdown(line))
+	}
+	return contentObjs
+}
 
-		var contentObjs []fyne.CanvasObject
-		lines := strings.Split(page.Content, "\n")
-		for _, line := range lines {
-			if strings.Contains(line, "{{image:") && strings.Contains(line, "}}") {
-				start := strings.Index(line, "{{image:")
-				end := strings.Index(line, "}}")
-				if start >= 0 && end > start {
-					imgName := strings.TrimSpace(line[start+len("{{image:") : end])
-					img := LoadImage(imgName)
-					if img != nil {
-						contentObjs = append(contentObjs, img)
-					}
+func (ui *WikiUI) processImageLine(line string, contentObjs *[]fyne.CanvasObject) bool {
+	if !strings.Contains(line, "{{image:") || !strings.Contains(line, "}}") {
+		return false
+	}
 
-					before := strings.TrimSpace(line[:start])
-					after := strings.TrimSpace(line[end+2:])
-					if before != "" {
-						contentObjs = append(contentObjs, widget.NewRichTextFromMarkdown(before))
-					}
-					if after != "" {
-						contentObjs = append(contentObjs, widget.NewRichTextFromMarkdown(after))
-					}
-					continue
-				}
-			}
-			contentObjs = append(contentObjs, widget.NewRichTextFromMarkdown(line))
+	start := strings.Index(line, "{{image:")
+	end := strings.Index(line, "}}")
+	if start < 0 || end <= start {
+		return false
+	}
+
+	imgName := strings.TrimSpace(line[start+len("{{image:") : end])
+	img := LoadImage(imgName)
+	if img != nil {
+		*contentObjs = append(*contentObjs, img)
+	}
+
+	ui.addTextAroundImage(line, start, end, contentObjs)
+	return true
+}
+
+func (ui *WikiUI) addTextAroundImage(line string, start, end int, contentObjs *[]fyne.CanvasObject) {
+	before := strings.TrimSpace(line[:start])
+	after := strings.TrimSpace(line[end+2:])
+	if before != "" {
+		*contentObjs = append(*contentObjs, widget.NewRichTextFromMarkdown(before))
+	}
+	if after != "" {
+		*contentObjs = append(*contentObjs, widget.NewRichTextFromMarkdown(after))
+	}
+}
+
+func (ui *WikiUI) renderPage(idx int, page *Page, contentObjs []fyne.CanvasObject) {
+	ui.index = idx
+	ui.title.SetText(page.Title)
+
+	nav := ui.createNavigation()
+	scrollContent := ui.createScrollContent(page, contentObjs)
+
+	ui.scroll = container.NewScroll(scrollContent)
+	ui.tab.Content = container.NewBorder(ui.title, nav, nil, nil, ui.scroll)
+}
+
+func (ui *WikiUI) createNavigation() *fyne.Container {
+	ui.btnPrev = widget.NewButton("Previous", func() {
+		if ui.index > 0 {
+			ui.loadPage(ui.index - 1)
 		}
+	})
 
-		fyne.Do(func() {
-			ui.index = idx
-			ui.title.SetText(page.Title)
-
-			ui.btnPrev = widget.NewButton("Previous", func() {
-				if ui.index > 0 {
-					ui.loadPage(ui.index - 1)
-				}
-			})
-
-			btnHome := widget.NewButtonWithIcon("", theme.HomeIcon(), func() {
-				for i, p := range ui.pages {
-					if p.FileName == "home.md" {
-						ui.loadPage(i)
-						break
-					}
-				}
-			})
-
-			ui.btnNext = widget.NewButton("Next", func() {
-				if ui.index < len(ui.pages)-1 {
-					ui.loadPage(ui.index + 1)
-				}
-			})
-
-			pageCounter := widget.NewLabel(fmt.Sprintf("%d/%d", ui.index+1, len(ui.pages)))
-			pageCounter.Alignment = fyne.TextAlignCenter
-
-			nav := container.NewCenter(
-				container.NewHBox(ui.btnPrev, btnHome, ui.btnNext, pageCounter),
-			)
-
-			var scrollContent fyne.CanvasObject
-			if page.FileName == "home.md" {
-				links := []fyne.CanvasObject{}
-				for i, p := range ui.pages {
-					if p.FileName == "home.md" {
-						continue
-					}
-					btn := widget.NewButton(p.Title, func(i int) func() {
-						return func() { ui.loadPage(i) }
-					}(i))
-					links = append(links, btn)
-				}
-				scrollContent = container.NewVBox(
-					container.NewVBox(contentObjs...),
-					container.NewCenter(container.NewVBox(links...)),
-				)
-			} else {
-				scrollContent = container.NewVBox(contentObjs...)
+	btnHome := widget.NewButtonWithIcon("", theme.HomeIcon(), func() {
+		for i, p := range ui.pages {
+			if p.FileName == "home.md" {
+				ui.loadPage(i)
+				break
 			}
+		}
+	})
 
-			ui.scroll = container.NewScroll(scrollContent)
-			ui.tab.Content = container.NewBorder(ui.title, nav, nil, nil, ui.scroll)
-		})
-	}()
+	ui.btnNext = widget.NewButton("Next", func() {
+		if ui.index < len(ui.pages)-1 {
+			ui.loadPage(ui.index + 1)
+		}
+	})
+
+	pageCounter := widget.NewLabel(fmt.Sprintf("%d/%d", ui.index+1, len(ui.pages)))
+	pageCounter.Alignment = fyne.TextAlignCenter
+
+	return container.NewCenter(
+		container.NewHBox(ui.btnPrev, btnHome, ui.btnNext, pageCounter),
+	)
+}
+
+func (ui *WikiUI) createScrollContent(page *Page, contentObjs []fyne.CanvasObject) fyne.CanvasObject {
+	if page.FileName == "home.md" {
+		return ui.createHomePageContent(contentObjs)
+	}
+	return container.NewVBox(contentObjs...)
+}
+
+func (ui *WikiUI) createHomePageContent(contentObjs []fyne.CanvasObject) fyne.CanvasObject {
+	links := []fyne.CanvasObject{}
+	for i, p := range ui.pages {
+		if p.FileName == "home.md" {
+			continue
+		}
+		btn := widget.NewButton(p.Title, func(i int) func() {
+			return func() { ui.loadPage(i) }
+		}(i))
+		links = append(links, btn)
+	}
+	return container.NewVBox(
+		container.NewVBox(contentObjs...),
+		container.NewCenter(container.NewVBox(links...)),
+	)
 }
 
 func LoadImage(name string) *canvas.Image {

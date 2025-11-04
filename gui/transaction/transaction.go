@@ -36,27 +36,39 @@ func (t *TransactionUI) createTab() *container.TabItem {
 	feeBinding := binding.NewString()
 	feeBinding.Set("0")
 
-	fromEntry := widget.NewEntryWithData(fromBinding)
-	fromEntry.SetPlaceHolder("Sender address")
-	fromEntry.Validator = func(s string) error {
+	fromEntry := t.createAddressEntry(fromBinding, "Sender address")
+	toEntry := t.createAddressEntry(toBinding, "Recipient address")
+	amountEntry := t.createAmountEntry(amountBinding)
+	feeEntry := t.createFeeEntry(feeBinding)
+
+	sendBtn := t.createSendButton(fromEntry, toEntry, amountEntry, feeBinding)
+
+	t.setupInputValidation(fromBinding, toBinding, amountBinding, feeBinding,
+		fromEntry, toEntry, amountEntry, feeEntry, sendBtn)
+
+	form := t.createForm(fromEntry, toEntry, amountEntry, feeEntry)
+	content := t.createContent(form, sendBtn)
+
+	return container.NewTabItemWithIcon("Transactions", icons.ResourceTransactionsPng,
+		container.NewPadded(content))
+}
+
+func (t *TransactionUI) createAddressEntry(binding binding.String, placeholder string) *widget.Entry {
+	entry := widget.NewEntryWithData(binding)
+	entry.SetPlaceHolder(placeholder)
+	entry.Validator = func(s string) error {
 		if !core.ValidateAddress(s) && s != "" {
-			return fmt.Errorf("invalid sender address")
+			return fmt.Errorf("invalid address")
 		}
 		return nil
 	}
+	return entry
+}
 
-	toEntry := widget.NewEntryWithData(toBinding)
-	toEntry.SetPlaceHolder("Recipient address")
-	toEntry.Validator = func(s string) error {
-		if !core.ValidateAddress(s) && s != "" {
-			return fmt.Errorf("invalid recipient address")
-		}
-		return nil
-	}
-
-	amountEntry := widget.NewEntryWithData(amountBinding)
-	amountEntry.SetPlaceHolder("Amount (integer)")
-	amountEntry.Validator = func(s string) error {
+func (t *TransactionUI) createAmountEntry(binding binding.String) *widget.Entry {
+	entry := widget.NewEntryWithData(binding)
+	entry.SetPlaceHolder("Amount (integer)")
+	entry.Validator = func(s string) error {
 		if s == "" {
 			return nil
 		}
@@ -66,10 +78,14 @@ func (t *TransactionUI) createTab() *container.TabItem {
 		}
 		return nil
 	}
+	t.attachNumericFilter(entry)
+	return entry
+}
 
-	feeEntry := widget.NewEntryWithData(feeBinding)
-	feeEntry.SetPlaceHolder("Fee (integer)")
-	feeEntry.Validator = func(s string) error {
+func (t *TransactionUI) createFeeEntry(binding binding.String) *widget.Entry {
+	entry := widget.NewEntryWithData(binding)
+	entry.SetPlaceHolder("Fee (integer)")
+	entry.Validator = func(s string) error {
 		if s == "" {
 			return nil
 		}
@@ -79,8 +95,12 @@ func (t *TransactionUI) createTab() *container.TabItem {
 		}
 		return nil
 	}
+	t.attachNumericFilter(entry)
+	return entry
+}
 
-	amountEntry.OnChanged = func(s string) {
+func (t *TransactionUI) attachNumericFilter(entry *widget.Entry) {
+	entry.OnChanged = func(s string) {
 		filtered := ""
 		for _, r := range s {
 			if r >= '0' && r <= '9' {
@@ -88,27 +108,22 @@ func (t *TransactionUI) createTab() *container.TabItem {
 			}
 		}
 		if s != filtered {
-			amountEntry.SetText(filtered)
+			entry.SetText(filtered)
 		}
 	}
+}
 
-	feeEntry.OnChanged = func(s string) {
-		filtered := ""
-		for _, r := range s {
-			if r >= '0' && r <= '9' {
-				filtered += string(r)
-			}
-		}
-		if s != filtered {
-			feeEntry.SetText(filtered)
-		}
-	}
-
+func (t *TransactionUI) createSendButton(fromEntry, toEntry, amountEntry *widget.Entry, feeBinding binding.String) *widget.Button {
 	sendBtn := widget.NewButtonWithIcon("Send transaction", theme.MailSendIcon(), func() {
 		fee, _ := feeBinding.Get()
 		t.onSendTransaction(fromEntry.Text, toEntry.Text, amountEntry.Text, fee)
 	})
 	sendBtn.Disable()
+	return sendBtn
+}
+
+func (t *TransactionUI) setupInputValidation(fromBinding, toBinding, amountBinding, feeBinding binding.String,
+	fromEntry, toEntry, amountEntry, feeEntry *widget.Entry, sendBtn *widget.Button) {
 
 	checkInputs := func() {
 		from, _ := fromBinding.Get()
@@ -133,8 +148,10 @@ func (t *TransactionUI) createTab() *container.TabItem {
 	toBinding.AddListener(binding.NewDataListener(checkInputs))
 	amountBinding.AddListener(binding.NewDataListener(checkInputs))
 	feeBinding.AddListener(binding.NewDataListener(checkInputs))
+}
 
-	form := &widget.Form{
+func (t *TransactionUI) createForm(fromEntry, toEntry, amountEntry, feeEntry *widget.Entry) *widget.Form {
+	return &widget.Form{
 		Items: []*widget.FormItem{
 			{Widget: fromEntry, HintText: "Sender's wallet address"},
 			{Widget: toEntry, HintText: "Recipient's wallet address"},
@@ -144,8 +161,10 @@ func (t *TransactionUI) createTab() *container.TabItem {
 		SubmitText: "",
 		CancelText: "",
 	}
+}
 
-	content := container.NewVBox(
+func (t *TransactionUI) createContent(form *widget.Form, sendBtn *widget.Button) *fyne.Container {
+	return container.NewVBox(
 		container.NewCenter(
 			widget.NewLabelWithStyle("Send transaction", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
 		),
@@ -157,9 +176,6 @@ func (t *TransactionUI) createTab() *container.TabItem {
 		),
 		layout.NewSpacer(),
 	)
-
-	return container.NewTabItemWithIcon("Transactions", icons.ResourceTransactionsPng,
-		container.NewPadded(content))
 }
 
 func (t *TransactionUI) onSendTransaction(from, to, amount, fee string) {

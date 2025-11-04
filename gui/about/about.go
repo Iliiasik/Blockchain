@@ -130,7 +130,7 @@ func NewAboutTab() *container.TabItem {
 
 	return container.NewTabItemWithIcon(
 		"About",
-		theme.InfoIcon(),
+		icons.ResourceInfoPng,
 		container.NewVScroll(
 			container.New(layout.NewPaddedLayout(), content),
 		),
