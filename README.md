@@ -1,10 +1,9 @@
 # Blockchain learning GUI
 
 [![Stars](https://img.shields.io/github/stars/Iliiasik/Blockchain.svg?style=flat&logo=github)](https://github.com/Iliiasik/Blockchain/stargazers)
-[![Downloads](https://img.shields.io/github/downloads/Iliiasik/Blockchain/total.svg?style=flat&logo=github)](https://github.com/Iliiasik/Blockchain/releases)
 [![License](https://img.shields.io/github/license/Iliiasik/Blockchain.svg?style=flat&logo=github)](https://github.com/Iliiasik/Blockchain/blob/main/LICENSE)
 [![Languages](https://img.shields.io/github/languages/top/Iliiasik/Blockchain.svg?style=flat&logo=github)](https://github.com/Iliiasik/Blockchain)
-[![CodeFactor](https://www.codefactor.io/repository/github/iliiasik/blockchain/badge)](https://www.codefactor.io/repository/github/iliiasik/blockchain)
+
 
 This application is created to demonstrate the principles of blockchain technology through a graphical user interface (GUI). It is built with Go using the [Fyne](https://fyne.io) toolkit.
 
