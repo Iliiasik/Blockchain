@@ -19,7 +19,7 @@ go run main.go
 Install and run the application directly using fyne:
 
 ```bash
-# Install the fyne CLI tool (if you don't have it yet)
+# Install the fyne CLI tool 
 go install fyne.io/tools/cmd/fyne@latest
 
 # Install the Blockchain app via fyne
