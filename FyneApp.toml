@@ -1,8 +1,8 @@
 Website = "https://github.com/Iliiasik/Blockchain"
 
 [Details]
-  Icon = "resources/icons/icon.png"
-  Name = "Blockchain"
-  ID = "com.iliiasik.blockchain"
-  Version = "2.0.0"
-  Build = 7
+Icon = "resources/icons/icon.png"
+Name = "Blockchain"
+ID = "com.iliiasik.blockchain"
+Version = "2.0.0"
+Build = 8
