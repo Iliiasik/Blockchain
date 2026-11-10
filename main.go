@@ -11,6 +11,5 @@ func main() {
 	fmt.Println("All operations and events will be shown here.")
 	fmt.Println("==========================")
 
-	app := app.NewBlockchainApp()
-	app.Run()
+	app.NewBlockchainApp().Run()
 }

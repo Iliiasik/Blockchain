@@ -22,10 +22,22 @@ func (tx *Transaction) GetAmount() int {
 }
 
 func PubKeyToAddress(pubKey []byte) string {
-	pubKeyHash := HashPubKey(pubKey)
-	return string(Base58Encode(append([]byte{0x00}, pubKeyHash...)))
+	return PubKeyHashToAddress(HashPubKey(pubKey))
 }
 
 func PubKeyHashToAddress(pubKeyHash []byte) string {
-	return string(Base58Encode(append([]byte{0x00}, pubKeyHash...)))
+	versionedPayload := append([]byte{version}, pubKeyHash...)
+	fullPayload := append(versionedPayload, checksum(versionedPayload)...)
+
+	return string(Base58Encode(fullPayload))
+}
+
+func AddressToPubKeyHash(address string) []byte {
+	if !ValidateAddress(address) {
+		return nil
+	}
+
+	pubKeyHash := Base58Decode([]byte(address))
+
+	return pubKeyHash[1 : len(pubKeyHash)-addressChecksumLen]
 }

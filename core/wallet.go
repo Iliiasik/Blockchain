@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/gob"
+	"errors"
 	"log"
 	"math/big"
 
@@ -30,43 +31,29 @@ func NewWallet() *Wallet {
 }
 
 func (w Wallet) GetAddress() []byte {
-	pubKeyHash := HashPubKey(w.PublicKey)
-
-	versionedPayload := append([]byte{version}, pubKeyHash...)
-	checksum := checksum(versionedPayload)
-
-	fullPayload := append(versionedPayload, checksum...)
-	address := Base58Encode(fullPayload)
-
-	return address
+	return []byte(PubKeyToAddress(w.PublicKey))
 }
 
 func HashPubKey(pubKey []byte) []byte {
 	publicSHA256 := sha256.Sum256(pubKey)
 
 	RIPEMD160Hasher := ripemd160.New()
-	_, err := RIPEMD160Hasher.Write(publicSHA256[:])
-	if err != nil {
-		log.Panic(err)
-	}
-	publicRIPEMD160 := RIPEMD160Hasher.Sum(nil)
+	_, _ = RIPEMD160Hasher.Write(publicSHA256[:])
 
-	return publicRIPEMD160
+	return RIPEMD160Hasher.Sum(nil)
 }
 
 func ValidateAddress(address string) bool {
 	pubKeyHash := Base58Decode([]byte(address))
 
-	if len(pubKeyHash) < addressChecksumLen+1 {
+	if len(pubKeyHash) != 1+ripemd160.Size+addressChecksumLen || pubKeyHash[0] != version {
 		return false
 	}
 
 	actualChecksum := pubKeyHash[len(pubKeyHash)-addressChecksumLen:]
-	version := pubKeyHash[0]
-	pubKeyHash = pubKeyHash[1 : len(pubKeyHash)-addressChecksumLen]
-	targetChecksum := checksum(append([]byte{version}, pubKeyHash...))
+	targetChecksum := checksum(pubKeyHash[:len(pubKeyHash)-addressChecksumLen])
 
-	return bytes.Compare(actualChecksum, targetChecksum) == 0
+	return bytes.Equal(actualChecksum, targetChecksum)
 }
 
 func checksum(payload []byte) []byte {
@@ -77,14 +64,16 @@ func checksum(payload []byte) []byte {
 }
 
 func newKeyPair() (ecdsa.PrivateKey, []byte) {
-	curve := elliptic.P256()
-	private, err := ecdsa.GenerateKey(curve, rand.Reader)
+	private, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		log.Panic(err)
 	}
-	pubKey := append(private.PublicKey.X.Bytes(), private.PublicKey.Y.Bytes()...)
+	point, err := private.PublicKey.Bytes()
+	if err != nil {
+		log.Panic(err)
+	}
 
-	return *private, pubKey
+	return *private, point[1:]
 }
 
 type _PrivateKey struct {
@@ -94,16 +83,24 @@ type _PrivateKey struct {
 }
 
 func (w *Wallet) GobEncode() ([]byte, error) {
+	secret, err := w.PrivateKey.Bytes()
+	if err != nil {
+		return nil, err
+	}
+	point, err := w.PrivateKey.PublicKey.Bytes()
+	if err != nil {
+		return nil, err
+	}
 	privKey := &_PrivateKey{
-		D:          w.PrivateKey.D,
-		PublicKeyX: w.PrivateKey.PublicKey.X,
-		PublicKeyY: w.PrivateKey.PublicKey.Y,
+		D:          new(big.Int).SetBytes(secret),
+		PublicKeyX: new(big.Int).SetBytes(point[1 : 1+coordinateSize]),
+		PublicKeyY: new(big.Int).SetBytes(point[1+coordinateSize:]),
 	}
 
 	var buf bytes.Buffer
 
 	encoder := gob.NewEncoder(&buf)
-	err := encoder.Encode(privKey)
+	err = encoder.Encode(privKey)
 	if err != nil {
 		return nil, err
 	}
@@ -126,14 +123,14 @@ func (w *Wallet) GobDecode(data []byte) error {
 		return err
 	}
 
-	w.PrivateKey = ecdsa.PrivateKey{
-		D: privKey.D,
-		PublicKey: ecdsa.PublicKey{
-			X:     privKey.PublicKeyX,
-			Y:     privKey.PublicKeyY,
-			Curve: elliptic.P256(),
-		},
+	if privKey.D == nil || privKey.D.Sign() <= 0 || privKey.D.BitLen() > 8*coordinateSize {
+		return errors.New("wallet holds an invalid private key")
 	}
+	key, err := ecdsa.ParseRawPrivateKey(elliptic.P256(), privKey.D.FillBytes(make([]byte, coordinateSize)))
+	if err != nil {
+		return err
+	}
+	w.PrivateKey = *key
 	w.PublicKey = make([]byte, buf.Len())
 	_, err = buf.Read(w.PublicKey)
 	if err != nil {

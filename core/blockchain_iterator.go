@@ -1,10 +1,6 @@
 package core
 
-import (
-	"log"
-
-	"github.com/boltdb/bolt"
-)
+import bolt "go.etcd.io/bbolt"
 
 type BlockchainIterator struct {
 	currentHash []byte
@@ -16,14 +12,18 @@ func (i *BlockchainIterator) Next() *Block {
 
 	err := i.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
-		encodedBlock := b.Get(i.currentHash)
-		block = DeserializeBlock(encodedBlock)
+		if b == nil {
+			return nil
+		}
+		if encodedBlock := b.Get(i.currentHash); encodedBlock != nil {
+			block = DeserializeBlock(encodedBlock)
+		}
 
 		return nil
 	})
 
-	if err != nil {
-		log.Panic(err)
+	if err != nil || block == nil {
+		return nil
 	}
 
 	i.currentHash = block.PrevBlockHash

@@ -6,12 +6,21 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"math/big"
 	"strings"
+)
+
+const coordinateSize = 32
+
+var (
+	ErrUnknownWallet      = errors.New("sender wallet is not found in wallet.dat")
+	ErrPendingTransaction = errors.New("wallet already has pending transaction")
+	ErrMempoolFull        = errors.New("mempool is full")
+	ErrNotEnoughFunds     = errors.New("not enough funds")
 )
 
 type Transaction struct {
@@ -26,90 +35,50 @@ func (tx Transaction) IsCoinbase() bool {
 }
 
 func (tx *Transaction) Serialize() []byte {
-	var buf bytes.Buffer
+	buf := writeBytes(nil, tx.ID)
 
-	binary.Write(&buf, binary.LittleEndian, int64(len(tx.ID)))
-	buf.Write(tx.ID)
-
-	binary.Write(&buf, binary.LittleEndian, int64(len(tx.Vin)))
+	buf = writeInt(buf, int64(len(tx.Vin)))
 	for _, input := range tx.Vin {
-		binary.Write(&buf, binary.LittleEndian, int64(len(input.Txid)))
-		buf.Write(input.Txid)
-
-		binary.Write(&buf, binary.LittleEndian, int64(input.Vout))
-
-		binary.Write(&buf, binary.LittleEndian, int64(len(input.Signature)))
-		buf.Write(input.Signature)
-
-		binary.Write(&buf, binary.LittleEndian, int64(len(input.PubKey)))
-		buf.Write(input.PubKey)
+		buf = writeBytes(buf, input.Txid)
+		buf = writeInt(buf, int64(input.Vout))
+		buf = writeBytes(buf, input.Signature)
+		buf = writeBytes(buf, input.PubKey)
 	}
 
-	binary.Write(&buf, binary.LittleEndian, int64(len(tx.Vout)))
+	buf = writeInt(buf, int64(len(tx.Vout)))
 	for _, output := range tx.Vout {
-		binary.Write(&buf, binary.LittleEndian, int64(output.Value))
-
-		binary.Write(&buf, binary.LittleEndian, int64(len(output.PubKeyHash)))
-		buf.Write(output.PubKeyHash)
+		buf = writeInt(buf, int64(output.Value))
+		buf = writeBytes(buf, output.PubKeyHash)
 	}
 
-	binary.Write(&buf, binary.LittleEndian, int64(tx.Fee))
-
-	return buf.Bytes()
+	return writeInt(buf, int64(tx.Fee))
 }
 
 func DeserializeTransaction(data []byte) *Transaction {
 	buf := bytes.NewReader(data)
 	tx := Transaction{}
 
-	var idLen int64
-	binary.Read(buf, binary.LittleEndian, &idLen)
-	tx.ID = make([]byte, idLen)
-	buf.Read(tx.ID)
+	tx.ID = readBytes(buf)
 
-	var vinCount int64
-	binary.Read(buf, binary.LittleEndian, &vinCount)
-	tx.Vin = make([]TXInput, vinCount)
-
-	for i := range tx.Vin {
-		var txidLen int64
-		binary.Read(buf, binary.LittleEndian, &txidLen)
-		tx.Vin[i].Txid = make([]byte, txidLen)
-		buf.Read(tx.Vin[i].Txid)
-
-		var vout int64
-		binary.Read(buf, binary.LittleEndian, &vout)
-		tx.Vin[i].Vout = int(vout)
-
-		var sigLen int64
-		binary.Read(buf, binary.LittleEndian, &sigLen)
-		tx.Vin[i].Signature = make([]byte, sigLen)
-		buf.Read(tx.Vin[i].Signature)
-
-		var pubKeyLen int64
-		binary.Read(buf, binary.LittleEndian, &pubKeyLen)
-		tx.Vin[i].PubKey = make([]byte, pubKeyLen)
-		buf.Read(tx.Vin[i].PubKey)
+	vinCount := readInt(buf)
+	for i := int64(0); i < vinCount && buf.Len() > 0; i++ {
+		var input TXInput
+		input.Txid = readBytes(buf)
+		input.Vout = int(readInt(buf))
+		input.Signature = readBytes(buf)
+		input.PubKey = readBytes(buf)
+		tx.Vin = append(tx.Vin, input)
 	}
 
-	var voutCount int64
-	binary.Read(buf, binary.LittleEndian, &voutCount)
-	tx.Vout = make([]TXOutput, voutCount)
-
-	for i := range tx.Vout {
-		var val int64
-		binary.Read(buf, binary.LittleEndian, &val)
-		tx.Vout[i].Value = int(val)
-
-		var pubKeyHashLen int64
-		binary.Read(buf, binary.LittleEndian, &pubKeyHashLen)
-		tx.Vout[i].PubKeyHash = make([]byte, pubKeyHashLen)
-		buf.Read(tx.Vout[i].PubKeyHash)
+	voutCount := readInt(buf)
+	for i := int64(0); i < voutCount && buf.Len() > 0; i++ {
+		var output TXOutput
+		output.Value = int(readInt(buf))
+		output.PubKeyHash = readBytes(buf)
+		tx.Vout = append(tx.Vout, output)
 	}
 
-	var fee int64
-	binary.Read(buf, binary.LittleEndian, &fee)
-	tx.Fee = int(fee)
+	tx.Fee = int(readInt(buf))
 
 	return &tx
 }
@@ -125,15 +94,13 @@ func (tx *Transaction) Hash() []byte {
 	return hash[:]
 }
 
-func (tx *Transaction) Sign(privKey ecdsa.PrivateKey, prevTXs map[string]Transaction) {
+func (tx *Transaction) Sign(privKey ecdsa.PrivateKey, prevTXs map[string]Transaction) error {
 	if tx.IsCoinbase() {
-		return
+		return nil
 	}
 
-	for _, vin := range tx.Vin {
-		if prevTXs[hex.EncodeToString(vin.Txid)].ID == nil {
-			log.Panic("ERROR: Previous transaction is not correct")
-		}
+	if err := checkPrevTransactions(tx, prevTXs); err != nil {
+		return err
 	}
 
 	txCopy := tx.TrimmedCopy()
@@ -147,12 +114,31 @@ func (tx *Transaction) Sign(privKey ecdsa.PrivateKey, prevTXs map[string]Transac
 
 		r, s, err := ecdsa.Sign(rand.Reader, &privKey, txCopy.ID)
 		if err != nil {
-			log.Panic(err)
+			return err
 		}
-		signature := append(r.Bytes(), s.Bytes()...)
+
+		signature := make([]byte, 2*coordinateSize)
+		r.FillBytes(signature[:coordinateSize])
+		s.FillBytes(signature[coordinateSize:])
 
 		tx.Vin[inID].Signature = signature
 	}
+
+	return nil
+}
+
+func checkPrevTransactions(tx *Transaction, prevTXs map[string]Transaction) error {
+	for _, vin := range tx.Vin {
+		prevTx, ok := prevTXs[hex.EncodeToString(vin.Txid)]
+		if !ok || prevTx.ID == nil {
+			return fmt.Errorf("previous transaction %x is not found", vin.Txid)
+		}
+		if vin.Vout < 0 || vin.Vout >= len(prevTx.Vout) {
+			return fmt.Errorf("previous transaction %x has no output %d", vin.Txid, vin.Vout)
+		}
+	}
+
+	return nil
 }
 
 func (tx Transaction) String() string {
@@ -200,10 +186,8 @@ func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
 		return true
 	}
 
-	for _, vin := range tx.Vin {
-		if prevTXs[hex.EncodeToString(vin.Txid)].ID == nil {
-			log.Panic("ERROR: Previous transaction is not correct")
-		}
+	if checkPrevTransactions(tx, prevTXs) != nil {
+		return false
 	}
 
 	txCopy := tx.TrimmedCopy()
@@ -211,6 +195,10 @@ func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
 
 	for inID, vin := range tx.Vin {
 		prevTx := prevTXs[hex.EncodeToString(vin.Txid)]
+		if len(vin.Signature) == 0 || !vin.UsesKey(prevTx.Vout[vin.Vout].PubKeyHash) {
+			return false
+		}
+
 		txCopy.Vin[inID].Signature = nil
 		txCopy.Vin[inID].PubKey = prevTx.Vout[vin.Vout].PubKeyHash
 		txCopy.ID = txCopy.Hash()
@@ -222,14 +210,11 @@ func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
 		r.SetBytes(vin.Signature[:(sigLen / 2)])
 		s.SetBytes(vin.Signature[(sigLen / 2):])
 
-		x := big.Int{}
-		y := big.Int{}
-		keyLen := len(vin.PubKey)
-		x.SetBytes(vin.PubKey[:(keyLen / 2)])
-		y.SetBytes(vin.PubKey[(keyLen / 2):])
-
-		rawPubKey := ecdsa.PublicKey{curve, &x, &y}
-		if ecdsa.Verify(&rawPubKey, txCopy.ID, &r, &s) == false {
+		rawPubKey, err := ecdsa.ParseUncompressedPublicKey(curve, append([]byte{4}, vin.PubKey...))
+		if err != nil {
+			return false
+		}
+		if !ecdsa.Verify(rawPubKey, txCopy.ID, &r, &s) {
 			return false
 		}
 	}
@@ -259,25 +244,44 @@ func NewUTXOTransaction(from, to string, amount int, fee int, UTXOSet *UTXOSet) 
 	var inputs []TXInput
 	var outputs []TXOutput
 
+	if amount <= 0 {
+		return nil, fmt.Errorf("amount must be positive")
+	}
+	if fee < 0 {
+		return nil, fmt.Errorf("fee can not be negative")
+	}
+	if !ValidateAddress(from) || !ValidateAddress(to) {
+		return nil, fmt.Errorf("invalid address")
+	}
+
 	wallets, err := NewWallets()
 	if err != nil {
 		return nil, err
 	}
-	wallet := wallets.GetWallet(from)
+	wallet, ok := wallets.GetWallet(from)
+	if !ok {
+		return nil, ErrUnknownWallet
+	}
 	pubKeyHash := HashPubKey(wallet.PublicKey)
 
-	senderAddress := PubKeyToAddress(wallet.PublicKey)
-	for _, tx := range UTXOSet.Blockchain.Mempool.GetTransactions() {
-		txSender := tx.GetSenderAddress()
-		if txSender == senderAddress {
-			return nil, fmt.Errorf("wallet already has pending transaction")
+	mempool := UTXOSet.Blockchain.Mempool
+	for _, tx := range mempool.GetTransactions() {
+		if tx.GetSenderAddress() == from {
+			return nil, ErrPendingTransaction
 		}
 	}
 
-	acc, validOutputs := UTXOSet.FindSpendableOutputs(pubKeyHash, amount+fee)
+	if mempool.IsFull() {
+		return nil, ErrMempoolFull
+	}
+
+	acc, validOutputs, err := UTXOSet.FindSpendableOutputs(pubKeyHash, amount+fee)
+	if err != nil {
+		return nil, err
+	}
 
 	if acc < amount+fee {
-		return nil, fmt.Errorf("not enough funds: need %d, available %d", amount+fee, acc)
+		return nil, fmt.Errorf("%w: need %d, available %d", ErrNotEnoughFunds, amount+fee, acc)
 	}
 
 	for txid, outs := range validOutputs {
@@ -299,10 +303,12 @@ func NewUTXOTransaction(from, to string, amount int, fee int, UTXOSet *UTXOSet) 
 
 	tx := Transaction{nil, inputs, outputs, fee}
 	tx.ID = tx.Hash()
-	UTXOSet.Blockchain.SignTransaction(&tx, wallet.PrivateKey)
+	if err := UTXOSet.Blockchain.SignTransaction(&tx, wallet.PrivateKey); err != nil {
+		return nil, err
+	}
 
-	if !UTXOSet.Blockchain.Mempool.AddTransaction(&tx) {
-		return nil, fmt.Errorf("mempool is full")
+	if err := mempool.AddTransaction(&tx); err != nil {
+		return nil, err
 	}
 
 	return &tx, nil

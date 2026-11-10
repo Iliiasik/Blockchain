@@ -1,57 +1,95 @@
-# Merkle Tree in blockchain
-A **Merkle Tree** is a binary tree of cryptographic hashes constructed from the
-transaction data of a block. It provides a compact and secure way to verify
-whether a specific transaction is included in a block — without needing to
-download and process every transaction.
-The structure is built recursively:
-- Each **leaf node** contains the hash of a transaction.
-- Each **parent node** is the hash of the concatenation of its two child nodes.
-- The process continues until a single hash remains — the **Merkle Root**.
-If a level of the tree contains an odd number of nodes, the last element is
-duplicated to keep the tree balanced. This ensures that every non-leaf node has
-exactly two children.
----
-{{image:merkle_tree.png}}
----
-## Usage in blockchain
-Merkle Trees play a fundamental role in blockchain systems, particularly in Bitcoin:
-- **Compactness** — A Merkle Root summarizes potentially thousands of transactions
-  into a single 32-byte value stored in the block header.
-- **Verification** — Through Merkle proofs, light (SPV) clients can confirm
-  transaction inclusion without downloading the full block.
-- **Security** — Any modification to a transaction alters its hash, which propagates
-  up the tree, changing the Merkle Root and invalidating the block.
-Bitcoin specifically uses **double SHA-256 hashing** for every node in the tree.
-Hashes are often represented in little-endian format, which requires byte-order
-reversal in some implementations.
----
+# Merkle tree
+
+A **Merkle tree** is a binary tree of hashes built from the transactions of a block. Its root is a single 32 byte value that commits to every transaction, and it allows proving that one transaction is in a block without downloading the others.
+
+{{image:merkle_construction.png|Bitcoin hashes every node twice, this project uses a single SHA-256 (Bitcoin Developer Guide)}}
+
+## Building the tree
+
+```go
+func NewMerkleTree(data [][]byte) *MerkleTree {
+    if len(data) == 0 {
+        return &MerkleTree{}
+    }
+
+    var nodes []*MerkleNode
+
+    for _, datum := range data {
+        node := NewMerkleNode(nil, nil, datum)
+        nodes = append(nodes, node)
+    }
+
+    for len(nodes) > 1 {
+        if len(nodes)%2 != 0 {
+            nodes = append(nodes, nodes[len(nodes)-1])
+        }
+
+        var newLevel []*MerkleNode
+
+        for i := 0; i < len(nodes); i += 2 {
+            node := NewMerkleNode(nodes[i], nodes[i+1], nil)
+            newLevel = append(newLevel, node)
+        }
+
+        nodes = newLevel
+    }
+
+    return &MerkleTree{nodes[0]}
+}
+```
+
+1. Every serialized transaction becomes a **leaf** containing its hash.
+2. Neighbouring nodes are paired and each pair is hashed into a **parent**.
+3. If a level has an odd number of nodes, the last one is duplicated.
+4. The process repeats until one node is left, the **Merkle root**.
+
+```go
+func NewMerkleNode(left, right *MerkleNode, data []byte) *MerkleNode {
+    mNode := MerkleNode{}
+
+    if left == nil && right == nil {
+        hash := sha256.Sum256(data)
+        mNode.Data = hash[:]
+    } else {
+        prevHashes := append(left.Data, right.Data...)
+        hash := sha256.Sum256(prevHashes)
+        mNode.Data = hash[:]
+    }
+
+    mNode.Left = left
+    mNode.Right = right
+
+    return &mNode
+}
+```
+
 ## Example
-Consider a block with three transactions **a, b, c**:  
-d1 = dhash(a)  
-d2 = dhash(b)  
-d3 = dhash(c)  
-d4 = dhash(c) # duplicate last, because odd number of transactions  
-d5 = dhash(d1 || d2)  
-d6 = dhash(d3 || d4)
-Merkle Root = dhash(d5 || d6)
-Here `dhash(x)` means **double SHA-256** of the input.
----
-## Merkle proofs
-A **Merkle Proof** allows verifying the inclusion of a specific transaction in a
-block without downloading the entire block.
-- The proof consists of the transaction hash and a minimal set of sibling hashes
-  needed to reconstruct the Merkle Root.
-- By successively hashing the transaction with the provided siblings, a lightweight
-  client (SPV) can check whether the calculated root matches the block header’s
-  Merkle Root.
-This makes Merkle Trees essential for **Simplified Payment Verification (SPV)**
-in Bitcoin and other blockchains.
----
-## Summary
-Merkle Trees are essential to blockchain design, combining three crucial aspects:
-- **Efficiency** — enable lightweight verification without the full dataset.
-- **Security** — prevent tampering by binding all transactions to a single root hash.
-- **Scalability** — allow simplified clients (SPV) to operate securely with minimal
-  resources.
-This makes Merkle Trees a core component of Bitcoin and many other decentralized
-systems.
+
+For a block with three transactions **a, b, c**:
+
+```text
+d1 = hash(a)
+d2 = hash(b)
+d3 = hash(c)
+d4 = hash(c)            duplicate, the level is odd
+d5 = hash(d1 + d2)
+d6 = hash(d3 + d4)
+root = hash(d5 + d6)
+```
+
+Bitcoin uses double SHA-256 for every node and writes hashes in little-endian order. This project uses a single SHA-256, which is enough to show the structure.
+
+## Why a tree and not one hash
+
+Hashing all transactions together would also produce one value. The tree adds **proofs**. To show that transaction `b` is in the block, you only need `d1` and `d6`:
+
+```text
+d5   = hash(d1 + hash(b))
+root = hash(d5 + d6)
+```
+
+If the computed root equals the root in the header, `b` is in the block. The proof grows with the logarithm of the number of transactions: about 12 hashes for a block of 4000 transactions. This is how **Simplified Payment Verification** (SPV) clients, like mobile wallets, check payments while storing only block headers.
+
+## In this project
+
+`Block.HashTransactions` builds the tree and the root becomes part of the Proof-of-Work header. The block inspector shows it as **Merkle root**. Mine a block with several mempool transactions and compare its root with an empty block: the root changes with every transaction you include.

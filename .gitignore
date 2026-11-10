@@ -1,0 +1,16 @@
+.idea/
+*.iml
+.vscode/
+
+blockchain.db
+blockchain.db.lock
+wallet.dat
+mempool.dat
+
+/Blockchain
+/Blockchain.exe
+*.app
+*.apk
+*.aab
+*.ipa
+fyne-cross/

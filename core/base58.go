@@ -11,7 +11,7 @@ var b58Alphabet = []byte("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuv
 func Base58Encode(input []byte) []byte {
 	var result []byte
 
-	x := big.NewInt(0).SetBytes(input)
+	x := new(big.Int).SetBytes(input)
 
 	base := big.NewInt(int64(len(b58Alphabet)))
 	zero := big.NewInt(0)
@@ -22,14 +22,14 @@ func Base58Encode(input []byte) []byte {
 		result = append(result, b58Alphabet[mod.Int64()])
 	}
 
-	utils.ReverseBytes(result)
-	for b := range input {
-		if b == 0x00 {
-			result = append([]byte{b58Alphabet[0]}, result...)
-		} else {
+	for _, b := range input {
+		if b != 0x00 {
 			break
 		}
+		result = append(result, b58Alphabet[0])
 	}
+
+	utils.ReverseBytes(result)
 
 	return result
 }
@@ -38,21 +38,22 @@ func Base58Decode(input []byte) []byte {
 	result := big.NewInt(0)
 	zeroBytes := 0
 
-	for b := range input {
-		if b == 0x00 {
-			zeroBytes++
+	for _, b := range input {
+		if b != b58Alphabet[0] {
+			break
 		}
+		zeroBytes++
 	}
 
-	payload := input[zeroBytes:]
-	for _, b := range payload {
+	base := big.NewInt(int64(len(b58Alphabet)))
+	for _, b := range input[zeroBytes:] {
 		charIndex := bytes.IndexByte(b58Alphabet, b)
-		result.Mul(result, big.NewInt(58))
+		if charIndex < 0 {
+			return nil
+		}
+		result.Mul(result, base)
 		result.Add(result, big.NewInt(int64(charIndex)))
 	}
 
-	decoded := result.Bytes()
-	decoded = append(bytes.Repeat([]byte{byte(0x00)}, zeroBytes), decoded...)
-
-	return decoded
+	return append(make([]byte, zeroBytes), result.Bytes()...)
 }

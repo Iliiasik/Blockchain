@@ -1,48 +1,99 @@
-# Blockchain wallets
-A blockchain wallet is a digital wallet that allows users to store, send, 
-and receive cryptocurrencies securely. It relies on public-key cryptography, 
-generating a unique private key and public key for every wallet. The wallet 
-does not store coins directly but manages the cryptographic keys that control access
-to funds stored on the blockchain.
----
-{{image:wallets.png}}
----
-## How blockchain wallets work
-In blockchain systems, wallets play a vital role in identity, transaction validation, 
-and fund management:
-- **Key Pair Generation** — wallets create an asymmetric key pair (private and public key) 
-using elliptic curve cryptography (ECC)
-- **Private Key** — acts as the secret credential that must be kept secure; 
-it allows the signing of transactions
-- **Public Key** — derived from the private key and used to generate addresses that others 
-use to send funds
-- **Addresses** — user-friendly representations (e.g., Base58Check encoding in Bitcoin) 
-of the public key hash
-## Wallet storage and management
-Wallets can generate and manage multiple addresses:
-- Multiple addresses can be stored in a single wallet
-- New wallets can be created and added to the collection
-- All addresses managed by the wallet can be listed
-- Wallets support persistence to files for recovery while keeping private keys secure
-## Security mechanisms
-Blockchain wallets implement multiple security layers:
-- **Checksums** — detect typing/transmission errors in addresses
-- **Hashing (SHA-256 + RIPEMD-160)** — ensures integrity and reduces public key size
-- **Elliptic Curve Cryptography (P256)** — provides strong cryptographic security
-- **Serialization** — allows secure storage of key material
+# Wallets and addresses
+
+A wallet does not store coins. Coins live in transaction outputs on the chain. A wallet stores the **private key** that can unlock those outputs and derives a human friendly **address** from the public key.
+
+{{image:p2pkh_unlock.png|The signature and the full public key must match the public key hash stored in the output (Bitcoin Developer Guide)}}
+
+## Key pair
+
+```go
+func newKeyPair() (ecdsa.PrivateKey, []byte) {
+    curve := elliptic.P256()
+    private, err := ecdsa.GenerateKey(curve, rand.Reader)
+    if err != nil {
+        log.Panic(err)
+    }
+    pubKey := make([]byte, 2*coordinateSize)
+    private.PublicKey.X.FillBytes(pubKey[:coordinateSize])
+    private.PublicKey.Y.FillBytes(pubKey[coordinateSize:])
+
+    return *private, pubKey
+}
+```
+
+The private key is a random number. The public key is a point on the P-256 elliptic curve, stored as its X and Y coordinates, 32 bytes each. Bitcoin uses the secp256k1 curve instead, but the idea is identical: computing the public key from the private one is easy, the opposite is practically impossible.
+
+## Public key cryptography and signatures
+
+A key pair splits two jobs. The **private key** is a secret known only to its owner, the **public key** can be shared with anyone. Data signed with the private key can be checked by anyone who has the public key, and nobody can produce a valid signature without the private key.
+
+In a blockchain this gives three guarantees at once:
+
+1. **Ownership.** Only the holder of the private key can spend an output locked to the matching public key hash.
+2. **Integrity.** The signature covers the transaction data. Change one byte, for example the amount, and verification fails.
+3. **Non-repudiation.** A signed transaction can not be denied later by its sender.
+
+The private key never leaves `wallet.dat`. A transaction carries only the public key and the signature, as the Transactions chapter shows. ECDSA also mixes a random number into every signature, so signing the same data twice gives two different signatures, and both are valid.
+
+## From public key to address
+
+```go
+func HashPubKey(pubKey []byte) []byte {
+    publicSHA256 := sha256.Sum256(pubKey)
+
+    RIPEMD160Hasher := ripemd160.New()
+    _, _ = RIPEMD160Hasher.Write(publicSHA256[:])
+
+    return RIPEMD160Hasher.Sum(nil)
+}
+
+func PubKeyHashToAddress(pubKeyHash []byte) string {
+    versionedPayload := append([]byte{version}, pubKeyHash...)
+    fullPayload := append(versionedPayload, checksum(versionedPayload)...)
+
+    return string(Base58Encode(fullPayload))
+}
+```
+
+1. Hash the public key with SHA-256 and then RIPEMD-160. The result is a 20 byte **public key hash**. Outputs are locked to this value.
+2. Prepend the version byte `0x00`.
+3. Append a 4 byte checksum, the first bytes of a double SHA-256 of the versioned payload.
+4. Encode the 25 bytes with Base58.
+
+The Wallets screen shows all three parts of every address: version, public key hash and checksum.
+
+## Validation
+
+```go
+func ValidateAddress(address string) bool {
+    pubKeyHash := Base58Decode([]byte(address))
+
+    if len(pubKeyHash) != 1+ripemd160.Size+addressChecksumLen || pubKeyHash[0] != version {
+        return false
+    }
+
+    actualChecksum := pubKeyHash[len(pubKeyHash)-addressChecksumLen:]
+    targetChecksum := checksum(pubKeyHash[:len(pubKeyHash)-addressChecksumLen])
+
+    return bytes.Equal(actualChecksum, targetChecksum)
+}
+```
+
+A single mistyped character changes the checksum, so the transaction form refuses the address before any coins are sent.
+
+## Storage
+
+All wallets are kept in `wallet.dat`. `Wallet` implements `GobEncode` and `GobDecode` so the elliptic curve, an interface value, does not have to be serialized. The file is written with `0600` permissions, readable only by your user, because anyone who copies it can spend your coins.
+
 ## Types of wallets
-Blockchain wallets can be categorized as:
-- **Hot wallets** — connected to the internet, convenient but more vulnerable
-- **Cold wallets** — offline storage, highly secure for long-term holding
-- **Hardware wallets** — physical devices securing private keys offline
-- **Software wallets** — apps or programs running on user devices
-In this application, the implemented wallet type is a **hot non-custodial software wallet**.
----
-## Summary
-Blockchain wallets provide essential cryptocurrency functionality:
-- Establish digital ownership through private/public keys
-- Enable transaction authorization
-- Include error protection mechanisms
-- Support long-term access to funds
-- Allow management of multiple addresses
-Blockchain wallets balance usability and security, enabling safe interaction with decentralized systems.
+
+- **Hot wallets** are connected to the internet, convenient but more exposed.
+- **Cold wallets** keep keys offline for long term storage.
+- **Hardware wallets** are devices that sign transactions without revealing the key.
+- **Software wallets** are programs on a computer or phone.
+
+The wallet in this application is a **hot, non-custodial software wallet**: keys are generated and kept locally, nobody else holds them.
+
+## Try it
+
+Create two wallets, copy an address, change one character and paste it into the recipient field of the Transactions screen. The field turns invalid because the checksum no longer matches.

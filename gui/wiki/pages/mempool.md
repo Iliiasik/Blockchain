@@ -1,27 +1,81 @@
-# Mempool in blockchain
-A **Mempool** (Memory Pool) is a temporary storage area for unconfirmed transactions in a blockchain
-node. It holds transactions that have been received by the node but not yet included in a block.  
-Mempools ensure that transactions can be propagated across the network efficiently and  
-prevent double-spending before they are mined.  
-Transactions in the mempool are tracked using their **transaction IDs**, and outputs that  
-have already been spent are monitored to maintain consistency and validity.
----
-{{image:mempool.png}}
----
-## Usage in blockchain
-Mempools play a critical role in the operation of blockchain nodes:
-- **Transaction buffering** — holds unconfirmed transactions until they can be mined into a block.
-- **Double-spend prevention** — tracks spent outputs to reject conflicting transactions.
-- **Network propagation** — allows nodes to relay transactions to peers before they are included in blocks.
-- **Resource management** — limits the number of transactions to avoid overloading the node (`maxSize`).
-- **Persistence** — transactions can be serialized and saved to disk for recovery on restart.  
-  This mechanism enables nodes to efficiently select valid transactions for mining while  
-  ensuring the integrity of the blockchain state.
----
-## Summary
-Mempools are essential for the smooth operation of blockchain networks, combining:
-- **Efficiency** — enables quick access to unconfirmed transactions for mining and validation.
-- **Security** — prevents double-spending by tracking outputs already used in other transactions.
-- **Network consistency** — allows rapid transaction propagation among nodes.  
-  These principles make the mempool a core component of transaction handling in Bitcoin  
-  and other decentralized systems.
+# Mempool and mining
+
+The **mempool** (memory pool) is the waiting room for transactions. A transaction enters it right after it is signed and leaves it when a miner includes it in a block.
+
+{{image:mining_workflow.png|Pending transactions flow from the network into a block template and then into mining (Bitcoin Developer Guide)}}
+
+## The structure
+
+```go
+type Mempool struct {
+    transactions map[string]*Transaction
+    maxSize      int
+    filePath     string
+    mu           sync.RWMutex
+    spentOutputs map[string]map[int]string
+}
+```
+
+- **transactions** maps a hex transaction ID to the transaction.
+- **spentOutputs** answers the question "is this output already promised to a pending transaction?" for every `(txid, index)` pair.
+- **maxSize** limits the number of pending transactions. You can change it on the Transactions screen.
+- **mu** makes the mempool safe to use from the mining goroutine and the interface at the same time.
+
+## Double spend protection
+
+```go
+func (mp *Mempool) AddTransaction(tx *Transaction) error {
+    mp.mu.Lock()
+    defer mp.mu.Unlock()
+
+    if len(mp.transactions) >= mp.maxSize {
+        return ErrMempoolFull
+    }
+
+    txID := hex.EncodeToString(tx.ID)
+    for _, input := range tx.Vin {
+        inputTxID := hex.EncodeToString(input.Txid)
+        if spendingTxID, exists := mp.spentOutputs[inputTxID][input.Vout]; exists && spendingTxID != txID {
+            return ErrOutputReserved
+        }
+    }
+
+    mp.addTransactionInternal(tx)
+
+    return mp.saveLocked()
+}
+```
+
+A transaction that tries to spend an output already used by another pending transaction is rejected with `ErrOutputReserved`, and a failed write of `mempool.dat` is reported instead of being lost. On top of that, the wallet logic allows only one pending transaction per sender, which keeps change outputs simple.
+
+## Persistence
+
+The mempool is saved to `mempool.dat`, one hex encoded transaction per line, every time it changes. When the application starts, it loads the file and removes every transaction whose inputs are no longer unspent or whose signature fails, for example after the chain was reset.
+
+## Choosing transactions to mine
+
+`GetTransactions` returns pending transactions sorted by fee, highest first, the same priority a profit seeking miner uses. On the Mining screen you choose which ones to include:
+
+```go
+fees := 0
+for _, tx := range txs {
+    fees += tx.Fee
+}
+
+coinbase := core.NewCoinbaseTX(miner, "", s.Subsidy+fees)
+transactions := append([]*core.Transaction{coinbase}, txs...)
+```
+
+The coinbase pays the miner the **subsidy** plus every **fee**. Fees are why miners have a reason to include your transaction, and why a higher fee usually means faster confirmation.
+
+## What happens after mining
+
+1. `MineBlock` verifies every selected transaction.
+2. Proof-of-Work finds a nonce.
+3. The block is stored and becomes the new tip.
+4. The included transactions are removed from the mempool.
+5. `UTXOSet.Update` spends their inputs and adds their outputs.
+
+## Try it
+
+Lower the mempool capacity to 2 and send three transactions from three wallets. The third one is rejected because the mempool is full. Mine a block with only the cheapest transaction and watch the others wait for the next block.

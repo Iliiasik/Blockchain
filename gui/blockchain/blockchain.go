@@ -1,169 +1,259 @@
 package blockchain
 
 import (
-	"Blockchain/core"
 	"Blockchain/gui/state"
+	"Blockchain/gui/ui"
+	"Blockchain/resources"
 	"Blockchain/resources/icons"
 	"fmt"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
+const genesisQuote = "September 30th, 1998. It's a day I'll never forget. The cop inside me died that day."
+
 type BlockchainUI struct {
-	window         fyne.Window
-	state          *state.AppState
-	visualization  *fyne.Container
-	blocks         []*core.Block
-	loadingSpinner *widget.ProgressBarInfinite
+	window fyne.Window
+	state  *state.AppState
+	snap   *state.Snapshot
+
+	setup    fyne.CanvasObject
+	explorer fyne.CanvasObject
+	content  *fyne.Container
+
+	genesis  *widget.Select
+	create   *widget.Button
+	activity *widget.Activity
+	working  *ui.Text
+
+	height     *ui.Stat
+	difficulty *ui.Stat
+	txs        *ui.Stat
+	age        *ui.Stat
+	strip      *fyne.Container
+	scroll     *ui.HStrip
+	inspector  *fyne.Container
+	cards      []*ui.Surface
+	shownTip   []byte
 }
 
-func NewBlockchainTab(window fyne.Window, state *state.AppState) *container.TabItem {
-	ui := &BlockchainUI{
-		window:        window,
-		state:         state,
-		visualization: container.NewHBox(),
-	}
-	return ui.createTab()
+func New(st *state.AppState, window fyne.Window) *BlockchainUI {
+	b := &BlockchainUI{window: window, state: st, snap: st.Snapshot()}
+	b.setup = b.buildSetup()
+	b.explorer = b.buildExplorer()
+	b.content = container.NewStack(b.setup, b.explorer)
+	st.Subscribe(b.update)
+	return b
 }
 
-func (b *BlockchainUI) createTab() *container.TabItem {
-	addressBinding := binding.NewString()
+func (b *BlockchainUI) Content() fyne.CanvasObject {
+	return b.content
+}
 
-	createAddress := widget.NewEntryWithData(addressBinding)
-	createAddress.SetPlaceHolder("Genesis address")
-	createAddress.Validator = func(s string) error {
-		if s == "" {
-			return nil
-		}
-		if !core.ValidateAddress(s) {
-			return fmt.Errorf("invalid address format")
-		}
-		return nil
+func (b *BlockchainUI) Focus(address string) {
+	if !b.snap.HasChain {
+		b.genesis.SetSelected(address)
 	}
+}
 
-	subsidyLabel := widget.NewLabel(fmt.Sprintf("Block reward (subsidy): %d", b.state.Subsidy))
-	subsidySlider := widget.NewSlider(1, 100)
-	subsidySlider.SetValue(float64(b.state.Subsidy))
-	subsidySlider.OnChanged = func(val float64) {
-		b.state.Subsidy = int(val)
+func (b *BlockchainUI) buildSetup() fyne.CanvasObject {
+	b.genesis = widget.NewSelect(nil, func(string) { b.updateCreate() })
+	b.genesis.PlaceHolder = "Choose the wallet that receives the genesis reward"
+
+	subsidyLabel := ui.NewText("", 13, theme.ColorNameForeground)
+	subsidy := widget.NewSlider(1, 100)
+	subsidy.Step = 1
+	subsidy.OnChanged = func(v float64) {
+		b.state.Subsidy = int(v)
 		subsidyLabel.SetText(fmt.Sprintf("Block reward (subsidy): %d", b.state.Subsidy))
 	}
+	subsidy.SetValue(float64(b.state.Subsidy))
 
-	bitsLabel := widget.NewLabel(fmt.Sprintf("Mining difficulty (bits): %d", b.state.TargetBits))
-	bitsSlider := widget.NewSlider(8, 28)
-	bitsSlider.SetValue(float64(b.state.TargetBits))
-	bitsSlider.Step = 1
-
-	bitsSlider.OnChanged = func(val float64) {
-		intVal := int(val)
-		b.state.TargetBits = intVal
-		bitsLabel.SetText(fmt.Sprintf("Mining difficulty (bits): %d", intVal))
-	}
-
-	bitsSlider.OnChangeEnded = func(val float64) {
-		intVal := int(val)
-		if intVal > 20 {
-			dialog.ShowInformation("Warning",
-				"Mining with difficulty > 20 may take very long time!\nRecommended: 16-18",
-				b.window)
-		}
-	}
-
-	b.loadingSpinner = widget.NewProgressBarInfinite()
-	b.loadingSpinner.Hide()
-
-	createBtn := widget.NewButtonWithIcon("Create blockchain", theme.ContentAddIcon(), func() {
-		address, _ := addressBinding.Get()
-		b.createBlockchain(address)
-	})
-	createBtn.Disable()
-
-	checkInput := func() {
-		address, _ := addressBinding.Get()
-		shouldEnable := address != "" && createAddress.Validate() == nil
-		if shouldEnable {
-			createBtn.Enable()
+	bitsLabel := ui.NewText("", 13, theme.ColorNameForeground)
+	bitsHint := ui.NewText("", 11, resources.ColorNameMuted)
+	bits := widget.NewSlider(8, 28)
+	bits.Step = 1
+	bits.OnChanged = func(v float64) {
+		b.state.TargetBits = int(v)
+		bitsLabel.SetText(fmt.Sprintf("Mining difficulty (bits): %d", b.state.TargetBits))
+		if b.state.TargetBits > 20 {
+			bitsHint.SetColor(theme.ColorNameWarning)
+			bitsHint.SetText("Above 20 bits mining can take a very long time, 16 to 18 is recommended")
 		} else {
-			createBtn.Disable()
+			bitsHint.SetColor(resources.ColorNameMuted)
+			bitsHint.SetText(fmt.Sprintf("About %s hashes on average", ui.Attempts(b.state.TargetBits)))
 		}
 	}
+	bits.SetValue(float64(b.state.TargetBits))
 
-	addressBinding.AddListener(binding.NewDataListener(checkInput))
+	b.activity = widget.NewActivity()
+	b.activity.Hide()
+	b.working = ui.Secondary("")
+	b.create = ui.Primary("Mine genesis block", theme.ContentAddIcon(), b.onCreate)
 
-	controls := container.NewVBox(
-		widget.NewLabelWithStyle("Blockchain controls", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
-		widget.NewSeparator(),
-		createBtn,
-		createAddress,
-		subsidyLabel,
-		subsidySlider,
-		bitsLabel,
-		bitsSlider,
-		b.loadingSpinner,
-		widget.NewButtonWithIcon("View blockchain", theme.VisibilityIcon(), b.updateVisualization),
-	)
+	newWallet := ui.Flat("New wallet", theme.ContentAddIcon(), func() {
+		address, err := b.state.CreateWallet()
+		if err != nil {
+			b.state.Toast("Wallet error", err.Error(), state.LevelError)
+			return
+		}
+		b.state.Toast("Wallet created", address, state.LevelSuccess)
+		b.genesis.SetOptions(append(b.genesis.Options, address))
+		b.genesis.SetSelected(address)
+		b.state.Refresh()
+	})
 
-	visualizationTitle := widget.NewLabelWithStyle("Blockchain visualization", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
-	scroll := container.NewScroll(b.visualization)
-	scroll.SetMinSize(fyne.NewSize(800, 120))
+	quote := ui.Muted("\"" + genesisQuote + "\"")
 
-	return container.NewTabItemWithIcon("Blockchain",
-		icons.ResourceBlockchainPng,
-		container.NewBorder(
-			controls,
-			nil,
-			nil,
-			nil,
-			container.NewVBox(
-				visualizationTitle,
-				widget.NewSeparator(),
-				scroll,
-			),
+	panel := ui.NewPanel(container.New(layout.NewCustomPaddedVBoxLayout(8),
+		container.NewBorder(nil, nil, nil, ui.Icon(icons.ResourceBlockchainPng, 56),
+			container.NewVBox(layout.NewSpacer(), ui.Title("Create the blockchain", 24), layout.NewSpacer()),
 		),
-	)
+		ui.Muted("The genesis block is the first block of the chain. It has no previous hash, and its coinbase "+
+			"transaction pays the block reward to the address you choose."),
+		ui.Divider(),
+		ui.Caption("Genesis address"),
+		container.NewBorder(nil, nil, nil, newWallet, b.genesis),
+		subsidyLabel, subsidy,
+		bitsLabel, bits, bitsHint,
+		ui.Caption("Coinbase data"),
+		quote,
+		ui.Divider(),
+		container.NewBorder(nil, nil, container.NewHBox(b.activity, container.NewCenter(b.working)), b.create),
+	))
+	return container.NewCenter(ui.FixedWidth(640, panel))
 }
 
-func (b *BlockchainUI) createBlockchain(address string) {
-	if b.state.TargetBits > 20 {
-		dialog.ShowConfirm("High Difficulty Warning",
-			fmt.Sprintf("Mining with difficulty %d may take VERY LONG TIME!\nAre you sure?", b.state.TargetBits),
-			func(confirm bool) {
-				if confirm {
-					b.createBlockchainConfirmed(address)
-				}
-			}, b.window)
+func (b *BlockchainUI) updateCreate() {
+	if b.genesis.Selected == "" || b.state.IsMining() || b.activity.Visible() {
+		b.create.Disable()
 	} else {
-		b.createBlockchainConfirmed(address)
+		b.create.Enable()
 	}
 }
 
-func (b *BlockchainUI) createBlockchainConfirmed(address string) {
-	b.loadingSpinner.Show()
+func (b *BlockchainUI) onCreate() {
+	address := b.genesis.Selected
+	if address == "" {
+		return
+	}
+
+	b.activity.Show()
+	b.activity.Start()
+	b.working.SetText(fmt.Sprintf("Mining the genesis block at %d bits", b.state.TargetBits))
+	b.updateCreate()
 
 	go func() {
-		bc, err := core.CreateBlockchain(address, b.state.Subsidy, b.state.TargetBits)
-
+		err := b.state.CreateBlockchain(address)
 		fyne.Do(func() {
-			b.loadingSpinner.Hide()
+			b.activity.Stop()
+			b.activity.Hide()
+			b.working.SetText("")
+			b.updateCreate()
 
 			if err != nil {
-				dialog.ShowError(err, b.window)
+				b.state.Toast("Genesis failed", err.Error(), state.LevelError)
 				return
 			}
-
-			UTXOSet := core.UTXOSet{bc}
-			UTXOSet.Reindex()
-
-			bc.Db.Close()
-
-			dialog.ShowInformation("Blockchain created",
-				fmt.Sprintf("New blockchain created!\nDifficulty: %d\nSubsidy: %d",
-					b.state.TargetBits, b.state.Subsidy),
-				b.window)
+			b.state.Toast("Blockchain created", fmt.Sprintf("Difficulty %d bits, subsidy %d", b.state.TargetBits, b.state.Subsidy), state.LevelSuccess)
 		})
+		b.state.Refresh()
 	}()
+}
+
+func (b *BlockchainUI) buildExplorer() fyne.CanvasObject {
+	b.height = ui.NewStat("Blocks")
+	b.difficulty = ui.NewStat("Tip difficulty")
+	b.txs = ui.NewStat("Transactions")
+	b.age = ui.NewStat("Last block")
+
+	b.strip = container.New(layout.NewCustomPaddedHBoxLayout(12))
+	b.scroll = ui.NewHStrip(b.strip)
+
+	reset := ui.Button("Reset", theme.DeleteIcon(), b.onReset)
+	mine := ui.Primary("Mine next block", theme.MediaPlayIcon(), func() { b.state.Go("mining", "") })
+
+	chain := ui.NewSurface(container.NewVBox(
+		container.NewBorder(nil, nil, container.NewCenter(ui.Section("Chain", "")), container.NewHBox(reset, mine)),
+		b.scroll,
+	))
+
+	b.inspector = container.NewStack()
+
+	inspector := ui.NewSurface(b.inspector)
+	inspector.Padding = 20
+
+	return container.NewBorder(
+		container.New(layout.NewCustomPaddedVBoxLayout(16),
+			container.NewGridWithColumns(4, b.height.Box, b.difficulty.Box, b.txs.Box, b.age.Box),
+			chain,
+			layout.NewSpacer(),
+		),
+		nil, nil, nil,
+		inspector,
+	)
+}
+
+func (b *BlockchainUI) update(snap *state.Snapshot) {
+	b.snap = snap
+
+	if !snap.HasChain {
+		b.explorer.Hide()
+		b.setup.Show()
+		current := b.genesis.Selected
+		b.genesis.SetOptions(snap.Addresses())
+		if current != "" {
+			b.genesis.SetSelected(current)
+		} else if len(snap.Wallets) > 0 {
+			b.genesis.SetSelected(snap.Wallets[0].Address)
+		}
+		b.updateCreate()
+		b.shownTip = nil
+		return
+	}
+
+	tip := snap.Tip()
+	if tip == nil {
+		return
+	}
+
+	b.setup.Hide()
+	b.explorer.Show()
+
+	b.height.Set(ui.Number(int64(snap.Height())), fmt.Sprintf("tip at height %d", snap.Height()-1))
+	b.difficulty.Set(fmt.Sprintf("%d bits", tip.Bits), "about "+ui.Attempts(tip.Bits)+" hashes")
+	b.txs.Set(ui.Number(int64(snap.TxCount)), "including coinbase")
+	b.age.Set(ui.Ago(tip.Timestamp), ui.FormatTime(tip.Timestamp))
+
+	if string(b.shownTip) == string(tip.Hash) && len(b.cards) == snap.Height() {
+		return
+	}
+	b.shownTip = tip.Hash
+	b.renderStrip()
+	b.inspect(0)
+}
+
+func (b *BlockchainUI) onReset() {
+	confirm := dialog.NewConfirm("Reset blockchain",
+		"This deletes blockchain.db and mempool.dat. Wallets in wallet.dat are kept.",
+		func(ok bool) {
+			if !ok {
+				return
+			}
+			if err := b.state.ResetBlockchain(); err != nil {
+				b.state.Toast("Reset failed", err.Error(), state.LevelError)
+				return
+			}
+			b.cards = nil
+			b.state.Toast("Blockchain removed", "Create a new genesis block to start again", state.LevelWarning)
+			b.state.Refresh()
+		}, b.window)
+	confirm.SetConfirmText("Delete chain")
+	confirm.SetConfirmImportance(widget.DangerImportance)
+	confirm.Show()
 }

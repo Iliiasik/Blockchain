@@ -3,444 +3,250 @@ package wallet
 import (
 	"Blockchain/core"
 	"Blockchain/gui/state"
+	"Blockchain/gui/ui"
+	"Blockchain/resources"
 	"Blockchain/resources/icons"
 	"encoding/hex"
 	"fmt"
+
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"time"
 )
 
 type WalletUI struct {
-	window     fyne.Window
-	list       *widget.List
-	walletData *core.Wallets
-	state      *state.AppState
+	window   fyne.Window
+	state    *state.AppState
+	snap     *state.Snapshot
+	selected string
+
+	list    *widget.List
+	count   *ui.Text
+	detail  *fyne.Container
+	content fyne.CanvasObject
 }
 
-func NewWalletTab(window fyne.Window, state *state.AppState) *container.TabItem {
-	ui := &WalletUI{window: window, state: state}
-	ui.walletData, _ = core.NewWallets()
-	return ui.createTab()
+func New(st *state.AppState, window fyne.Window) *WalletUI {
+	w := &WalletUI{window: window, state: st, snap: st.Snapshot()}
+	w.content = w.build()
+	st.Subscribe(w.update)
+	return w
 }
 
-func (w *WalletUI) createTab() *container.TabItem {
-	createWalletBtn := widget.NewButtonWithIcon("Create new wallet", theme.ContentAddIcon(), w.onCreateWallet)
-	w.list = w.createAddressesList()
-	refreshBtn := widget.NewButtonWithIcon("Refresh", theme.ViewRefreshIcon(), w.refreshList)
+func (w *WalletUI) Content() fyne.CanvasObject {
+	return w.content
+}
 
-	buttonBar := container.NewHBox(
-		layout.NewSpacer(),
-		createWalletBtn,
-		refreshBtn,
-		layout.NewSpacer(),
+func (w *WalletUI) Focus(address string) {
+	for i, info := range w.snap.Wallets {
+		if info.Address == address {
+			w.list.Select(i)
+			w.list.ScrollTo(i)
+			return
+		}
+	}
+}
+
+func (w *WalletUI) build() fyne.CanvasObject {
+	w.count = ui.Caption("")
+
+	w.list = widget.NewList(
+		func() int { return len(w.snap.Wallets) },
+		func() fyne.CanvasObject {
+			return ui.Padded(4, 4, 4, 4, container.NewBorder(nil, nil, nil,
+				ui.Padded(0, 0, 12, 0, container.NewHBox(container.NewCenter(ui.Strong("", 16)), container.NewCenter(ui.Icon(icons.ResourceCoinPng, 16)))),
+				container.NewVBox(ui.Flush(ui.MonoValue("")), ui.Caption("")),
+			))
+		},
+		func(id widget.ListItemID, item fyne.CanvasObject) {
+			if id >= len(w.snap.Wallets) {
+				return
+			}
+			info := w.snap.Wallets[id]
+			row := item.(*fyne.Container).Objects[0].(*fyne.Container)
+			texts := row.Objects[0].(*fyne.Container)
+			texts.Objects[0].(*fyne.Container).Objects[0].(*widget.Label).SetText(info.Address)
+
+			sub := fmt.Sprintf("%d unspent outputs", info.Outputs)
+			if !w.snap.HasChain {
+				sub = "no blockchain yet"
+			} else if info.Available != info.Balance {
+				sub = fmt.Sprintf("%d locked in mempool", info.Balance-info.Available)
+			}
+			texts.Objects[1].(*ui.Text).SetText(sub)
+
+			balance := row.Objects[1].(*fyne.Container).Objects[0].(*fyne.Container).Objects[0].(*fyne.Container).Objects[0].(*ui.Text)
+			balance.SetText(ui.Number(int64(info.Balance)))
+		},
 	)
+	w.list.OnSelected = func(id widget.ListItemID) {
+		if id < len(w.snap.Wallets) && w.snap.Wallets[id].Address != w.selected {
+			w.selected = w.snap.Wallets[id].Address
+			w.showDetail()
+		}
+	}
 
-	scrollContainer := container.NewScroll(w.list)
-	scrollContainer.SetMinSize(fyne.NewSize(400, 300))
+	create := ui.Primary("New wallet", theme.ContentAddIcon(), w.onCreateWallet)
 
-	content := container.NewBorder(
+	left := ui.NewSurface(container.NewBorder(
 		container.NewVBox(
-			widget.NewLabelWithStyle("Wallets management",
-				fyne.TextAlignCenter,
-				fyne.TextStyle{Bold: true}),
-			buttonBar,
-			widget.NewSeparator(),
+			container.NewBorder(nil, nil, container.NewCenter(ui.Section("Key store", "")), create),
+			w.count,
+			ui.Padded(8, 4, 0, 0, ui.Divider()),
 		),
-		nil,
-		nil,
-		nil,
-		scrollContainer,
-	)
+		nil, nil, nil,
+		w.list,
+	))
 
-	return container.NewTabItemWithIcon("Wallets", icons.ResourceWalletsPng, content)
+	w.detail = container.NewStack()
+	w.showDetail()
+
+	split := container.NewHSplit(left, w.detail)
+	split.Offset = 0.4
+	return split
+}
+
+func (w *WalletUI) update(snap *state.Snapshot) {
+	w.snap = snap
+	w.count.SetText(fmt.Sprintf("%d wallets in wallet.dat", len(snap.Wallets)))
+	w.list.Refresh()
+
+	if w.selected != "" {
+		for i, info := range snap.Wallets {
+			if info.Address == w.selected {
+				w.list.Select(i)
+				break
+			}
+		}
+	}
+	w.showDetail()
 }
 
 func (w *WalletUI) onCreateWallet() {
-	address := w.walletData.CreateWallet()
-	w.walletData.SaveToFile()
-
-	dialog.ShowInformation(
-		"New wallet created",
-		fmt.Sprintf("Address:\n%s", address),
-		w.window,
-	)
-	w.refreshList()
-}
-
-func (w *WalletUI) refreshList() {
-	var err error
-	w.walletData, err = core.NewWallets()
+	address, err := w.state.CreateWallet()
 	if err != nil {
-		dialog.ShowError(err, w.window)
-		return
-	}
-	w.list.Refresh()
-}
-
-func (w *WalletUI) createAddressesList() *widget.List {
-	return widget.NewList(
-		w.getAddressCount,
-		w.createAddressItem,
-		w.updateAddressItem,
-	)
-}
-
-func (w *WalletUI) getAddressCount() int {
-	if w.walletData == nil {
-		return 0
-	}
-	return len(w.walletData.GetAddresses())
-}
-
-func (w *WalletUI) createAddressItem() fyne.CanvasObject {
-	addressContainer := container.NewHBox()
-
-	addressLabel := widget.NewLabel("")
-	addressContainer.Add(addressLabel)
-
-	balanceLabel := widget.NewLabel("")
-
-	copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), nil)
-	checkBtn := widget.NewButtonWithIcon("", theme.InfoIcon(), nil)
-	mineBtn := widget.NewButtonWithIcon("", theme.MediaPlayIcon(), nil)
-
-	copyBtn.Importance = widget.LowImportance
-	checkBtn.Importance = widget.LowImportance
-	mineBtn.Importance = widget.LowImportance
-
-	rightBox := container.NewHBox(
-		balanceLabel,
-		widget.NewSeparator(),
-		checkBtn,
-		copyBtn,
-		mineBtn,
-	)
-
-	return container.NewHBox(
-		addressContainer,
-		layout.NewSpacer(),
-		rightBox,
-	)
-}
-
-func (w *WalletUI) updateAddressItem(i int, item fyne.CanvasObject) {
-	if w.walletData == nil {
+		w.state.Toast("Wallet error", err.Error(), state.LevelError)
 		return
 	}
 
-	addresses := w.walletData.GetAddresses()
-	if i >= len(addresses) {
+	w.selected = address
+	w.state.Toast("Wallet created", address, state.LevelSuccess)
+	w.state.Refresh()
+}
+
+func (w *WalletUI) copied(string) {
+	w.state.Toast("Copied", "Value copied to clipboard", state.LevelInfo)
+}
+
+func (w *WalletUI) showDetail() {
+	info, ok := w.snap.Wallet(w.selected)
+	if !ok {
+		w.detail.Objects = []fyne.CanvasObject{ui.NewSurface(ui.Empty(icons.ResourceWalletsPng,
+			"No wallet selected", "Create a wallet or pick one from the key store"))}
+		w.detail.Refresh()
 		return
 	}
 
-	address := addresses[i]
-	row := item.(*fyne.Container)
-	addressContainer := row.Objects[0].(*fyne.Container)
-	addressLabel := addressContainer.Objects[0].(*widget.Label)
-	rightBox := row.Objects[2].(*fyne.Container)
+	raw := core.Base58Decode([]byte(info.Address))
 
-	var balanceContainer *fyne.Container
-	if len(rightBox.Objects) > 0 {
-		switch obj := rightBox.Objects[0].(type) {
-		case *widget.Label:
-			balanceContainer = container.NewHBox()
-			rightBox.Objects[0] = balanceContainer
-			rightBox.Refresh()
-		case *fyne.Container:
-			balanceContainer = obj
-		default:
-			balanceContainer = container.NewHBox()
-			rightBox.Objects[0] = balanceContainer
-			rightBox.Refresh()
-		}
+	balance := ui.NewStat("Balance")
+	balance.Set(ui.Number(int64(info.Balance)), "confirmed coins")
+	available := ui.NewStat("Spendable")
+	available.Set(ui.Number(int64(info.Available)), "not locked by pending tx")
+	outputs := ui.NewStat("Outputs")
+	outputs.Set(ui.Number(int64(info.Outputs)), "unspent outputs")
+
+	actions := container.NewHBox(
+		ui.Primary("Send", theme.MailSendIcon(), func() { w.state.Go("transactions", info.Address) }),
+		ui.Button("Mine to wallet", theme.MediaPlayIcon(), func() { w.state.Go("mining", info.Address) }),
+		ui.Button("Outputs", theme.SearchIcon(), func() { w.state.Go("utxo", info.Address) }),
+	)
+	if !w.snap.HasChain {
+		actions.Add(ui.Button("Use as genesis", theme.ContentAddIcon(), func() { w.state.Go("blockchain", info.Address) }))
 	}
 
-	checkBtn := rightBox.Objects[2].(*widget.Button)
-	copyBtn := rightBox.Objects[3].(*widget.Button)
-	mineBtn := rightBox.Objects[4].(*widget.Button)
+	header := ui.NewPanel(container.NewVBox(
+		ui.Caption("Address"),
+		ui.Copyable(info.Address, w.copied),
+		ui.KV(
+			ui.Key("Version"), ui.MonoValue(fmt.Sprintf("0x%02x", raw[0])),
+			ui.Key("Public key hash"), ui.Copyable(hex.EncodeToString(info.PubKeyHash), w.copied),
+			ui.Key("Checksum"), ui.MonoValue(hex.EncodeToString(raw[len(raw)-4:])),
+		),
+		ui.Padded(8, 0, 0, 0, actions),
+	))
 
-	addressLabel.SetText(address)
+	entries := container.New(layout.NewCustomPaddedVBoxLayout(8), ui.SkeletonRows(3, 56))
+	historyPanel := ui.NewSurface(container.NewVBox(ui.Section("History", ""), entries))
 
-	balance, err := w.getBalance(address)
-	if err == nil {
-		coinIcon := canvas.NewImageFromResource(icons.ResourceCoinPng)
-		coinIcon.SetMinSize(fyne.NewSize(35, 35))
-		balanceContainer.Objects = []fyne.CanvasObject{
-			widget.NewLabel(fmt.Sprintf("%d", balance)),
-			coinIcon,
-		}
-		balanceContainer.Refresh()
-	} else {
-		balanceContainer.Objects = []fyne.CanvasObject{
-			widget.NewLabel("Create blockchain first"),
-		}
-		balanceContainer.Refresh()
-	}
+	w.detail.Objects = []fyne.CanvasObject{ui.NewNestedScroll(container.New(layout.NewCustomPaddedVBoxLayout(16),
+		header,
+		container.NewGridWithColumns(3, balance.Box, available.Box, outputs.Box),
+		historyPanel,
+	))}
+	w.detail.Refresh()
 
-	copyBtn.OnTapped = func() {
-		w.window.Clipboard().SetContent(address)
-		dialog.ShowInformation(
-			"Address copied",
-			"Wallet address copied to clipboard",
-			w.window,
-		)
-	}
-
-	checkBtn.OnTapped = func() {
-		w.showTransactionHistory(address)
-	}
-
-	mineBtn.OnTapped = func() {
-		bc, err := core.NewBlockchain()
-		if err != nil {
-			dialog.ShowError(err, w.window)
-			return
-		}
-		defer bc.Db.Close()
-
-		options := []string{"Mine empty block (only coinbase)", "Mine with selected transactions"}
-		radio := widget.NewRadioGroup(options, nil)
-		radio.SetSelected(options[0])
-
-		var miningTypeDialog dialog.Dialog
-
-		continueBtn := widget.NewButton("Continue", func() {
-			miningTypeDialog.Hide()
-
-			if radio.Selected == options[0] {
-				cbTx := core.NewCoinbaseTX(address, "", w.state.Subsidy)
-				transactions := []*core.Transaction{cbTx}
-				miningBC, err := core.NewBlockchain()
-				if err != nil {
-					dialog.ShowError(err, w.window)
-					return
-				}
-				w.startMiningProcess(addressContainer, transactions, miningBC)
-			} else {
-				miningBC, err := core.NewBlockchain()
-				if err != nil {
-					dialog.ShowError(err, w.window)
-					return
-				}
-				defer miningBC.Db.Close()
-
-				mempoolTxs := miningBC.Mempool.GetTransactions()
-				if len(mempoolTxs) == 0 {
-					dialog.ShowInformation("Mempool Empty", "No transactions in mempool", w.window)
-					return
-				}
-
-				selectedTxs := make(map[string]*core.Transaction)
-				totalFees := 0
-				infoLabel := widget.NewLabel("")
-				updateInfo := func() {
-					infoLabel.SetText(fmt.Sprintf("Selected: %d | Fees: %d | Reward: %d",
-						len(selectedTxs), totalFees, totalFees+w.state.Subsidy))
-				}
-				updateInfo()
-
-				txList := widget.NewList(
-					func() int { return len(mempoolTxs) },
-					func() fyne.CanvasObject {
-						return container.NewHBox(
-							widget.NewCheck("", nil),
-							widget.NewLabel("TXID:"),
-							widget.NewLabel(""),
-							widget.NewLabel("Fee:"),
-							widget.NewLabel(""),
-						)
-					},
-					func(i int, item fyne.CanvasObject) {
-						tx := mempoolTxs[i]
-						c := item.(*fyne.Container)
-						check := c.Objects[0].(*widget.Check)
-						txIDLabel := c.Objects[2].(*widget.Label)
-						feeLabel := c.Objects[4].(*widget.Label)
-						txID := hex.EncodeToString(tx.ID)
-						txIDLabel.SetText(txID[:30] + "...")
-						feeLabel.SetText(fmt.Sprintf("%d", tx.Fee))
-						check.OnChanged = func(checked bool) {
-							if checked {
-								selectedTxs[txID] = tx
-								totalFees += tx.Fee
-							} else {
-								delete(selectedTxs, txID)
-								totalFees -= tx.Fee
-							}
-							updateInfo()
-						}
-					},
-				)
-
-				scrollContainer := container.NewScroll(txList)
-				scrollContainer.SetMinSize(fyne.NewSize(0, 300))
-				content := container.NewBorder(nil, infoLabel, nil, nil, scrollContainer)
-
-				var txSelectDialog dialog.Dialog
-
-				startMiningBtn := widget.NewButton("Start Mining", func() {
-					txSelectDialog.Hide()
-					var transactions []*core.Transaction
-					for _, tx := range selectedTxs {
-						transactions = append(transactions, tx)
-					}
-					cbTx := core.NewCoinbaseTX(address, "", w.state.Subsidy+totalFees)
-					transactions = append([]*core.Transaction{cbTx}, transactions...)
-					miningBC, err := core.NewBlockchain()
-					if err != nil {
-						dialog.ShowError(err, w.window)
-						return
-					}
-					w.startMiningProcess(addressContainer, transactions, miningBC)
-				})
-
-				closeBtn := widget.NewButton("Close", func() {
-					txSelectDialog.Hide()
-				})
-
-				buttons := container.NewHBox(layout.NewSpacer(), closeBtn, startMiningBtn)
-				dialogContent := container.NewVBox(
-					widget.NewLabel("Select transactions to include:"),
-					content,
-					buttons,
-				)
-
-				txSelectDialog = dialog.NewCustomWithoutButtons(
-					"Select transactions",
-					dialogContent,
-					w.window,
-				)
-				txSelectDialog.Resize(fyne.NewSize(600, 400))
-				txSelectDialog.Show()
-			}
-		})
-
-		cancelBtn := widget.NewButton("Cancel", func() {
-			miningTypeDialog.Hide()
-		})
-
-		miningTypeContent := container.NewVBox(
-			widget.NewLabel("Select mining type:"),
-			radio,
-			container.NewHBox(layout.NewSpacer(), cancelBtn, continueBtn),
-		)
-
-		miningTypeDialog = dialog.NewCustomWithoutButtons(
-			"Mining options",
-			miningTypeContent,
-			w.window,
-		)
-		miningTypeDialog.Resize(fyne.NewSize(400, 180))
-		miningTypeDialog.Show()
-	}
-
-}
-
-func (w *WalletUI) startMiningProcess(addressContainer *fyne.Container, transactions []*core.Transaction, bc *core.Blockchain) {
-	stopAnimation := make(chan struct{})
-	miningIcon := canvas.NewImageFromResource(icons.ResourceMiningPng)
-	miningIcon.SetMinSize(fyne.NewSize(35, 35))
-
+	snap := w.snap
 	go func() {
-		showIcon := false
-		for {
-			select {
-			case <-stopAnimation:
-				fyne.Do(func() {
-					if len(addressContainer.Objects) > 1 {
-						addressContainer.Objects = addressContainer.Objects[:1]
-						addressContainer.Refresh()
-					}
-				})
-				return
-			default:
-				fyne.Do(func() {
-					if showIcon {
-						if len(addressContainer.Objects) == 1 {
-							addressContainer.Add(miningIcon)
-						}
-					} else {
-						if len(addressContainer.Objects) > 1 {
-							addressContainer.Objects = addressContainer.Objects[:1]
-						}
-					}
-					addressContainer.Refresh()
-					showIcon = !showIcon
-				})
-				time.Sleep(400 * time.Millisecond)
-			}
-		}
-	}()
-
-	go func() {
-		defer bc.Db.Close()
-		block := bc.MineBlock(transactions, w.state.TargetBits)
-		close(stopAnimation)
-		if block == nil {
-			fyne.Do(func() {
-				dialog.ShowError(fmt.Errorf("mining failed"), w.window)
-			})
-			return
-		}
-		utxo := core.UTXOSet{bc}
-		utxo.Update(block)
-		reward := w.state.Subsidy
-		if len(transactions) > 1 {
-			fees := 0
-			for _, tx := range transactions[1:] {
-				fees += tx.Fee
-			}
-			reward += fees
-			fyne.Do(func() {
-				dialog.ShowInformation(
-					"Block Mined",
-					fmt.Sprintf("Successfully mined block!\nHash: %x\nReward: %d",
-						block.Hash, reward),
-					w.window,
-				)
-			})
-		} else {
-			fyne.Do(func() {
-				dialog.ShowInformation(
-					"Block Mined",
-					fmt.Sprintf("Successfully mined empty block!\nHash: %x\nReward: %d",
-						block.Hash, reward),
-					w.window,
-				)
-			})
-		}
+		list := history(snap.Blocks, snap.Mempool, info.PubKeyHash)
 		fyne.Do(func() {
-			w.refreshList()
+			if w.selected != info.Address {
+				return
+			}
+			entries.RemoveAll()
+			if len(list) == 0 {
+				entries.Add(ui.Muted("No transactions yet. Mine a block to this wallet or receive coins."))
+				entries.Refresh()
+				return
+			}
+			for _, e := range list {
+				entries.Add(w.entryRow(e))
+			}
+			entries.Refresh()
 		})
 	}()
 }
 
-func (w *WalletUI) getBalance(address string) (int, error) {
-	if !core.ValidateAddress(address) {
-		return 0, fmt.Errorf("Invalid address")
+func (w *WalletUI) entryRow(e entry) fyne.CanvasObject {
+	kind := resources.ColorNameAccent
+	amountColor := theme.ColorNameSuccess
+	amount := fmt.Sprintf("+%s", ui.Number(int64(e.Amount)))
+	label := map[string]string{"mined": "Mined", "sent": "Sent", "received": "Received"}[e.Kind]
+	switch e.Kind {
+	case "mined":
+		kind = theme.ColorNameSuccess
+	case "sent":
+		kind = theme.ColorNameError
+		amountColor = theme.ColorNameForeground
+		amount = ui.Number(int64(e.Amount))
 	}
 
-	bc, err := core.NewBlockchain()
-	if err != nil {
-		return 0, err
+	when := fmt.Sprintf("Block #%d, %s", e.Height, ui.FormatTime(e.Time))
+	if e.Pending {
+		when = "Waiting in the mempool"
+		kind = theme.ColorNameWarning
+		label += ", pending"
 	}
-	defer bc.Db.Close()
+	badges := container.NewHBox(ui.NewBadge(label, kind))
 
-	UTXOSet := core.UTXOSet{bc}
-	pubKeyHash := core.Base58Decode([]byte(address))
-	pubKeyHash = pubKeyHash[1 : len(pubKeyHash)-4]
-	UTXOs := UTXOSet.FindUTXO(pubKeyHash)
-
-	balance := 0
-	for _, out := range UTXOs {
-		balance += out.Value
+	counterparty := e.Counterparty
+	if len(counterparty) > 20 {
+		counterparty = ui.ShortAddress(counterparty)
 	}
 
-	return balance, nil
+	fee := ""
+	if e.Fee > 0 && e.Kind == "sent" {
+		fee = fmt.Sprintf("Fee %d", e.Fee)
+	}
+
+	return ui.NewRaised(container.NewBorder(nil, nil,
+		ui.FixedWidth(140, container.NewCenter(container.NewHBox(badges))),
+		container.NewVBox(ui.NewText(amount, 16, amountColor), ui.Caption(fee)),
+		ui.Padded(0, 0, 12, 12, container.NewVBox(
+			ui.Mono(ui.Short(e.TxID)+"   "+counterparty, theme.ColorNameForeground),
+			ui.Caption(when),
+		)),
+	))
 }
