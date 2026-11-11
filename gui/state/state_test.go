@@ -167,11 +167,16 @@ func TestFullLifecycle(t *testing.T) {
 		t.Fatal("SetMempoolSize did not reach the mempool")
 	}
 
+	s.Subsidy = 42
+	s.TargetBits = 12
 	if err := s.ResetBlockchain(); err != nil {
 		t.Fatal(err)
 	}
 	if s.Blockchain() != nil || core.BlockchainExists() {
 		t.Fatal("reset left the chain behind")
+	}
+	if s.Subsidy != defaultSubsidy || s.TargetBits != defaultTargetBits {
+		t.Fatalf("reset kept subsidy %d and bits %d", s.Subsidy, s.TargetBits)
 	}
 	if snap = s.load(); snap.HasChain || len(snap.Wallets) != 2 {
 		t.Fatal("reset must keep wallets and drop the chain")

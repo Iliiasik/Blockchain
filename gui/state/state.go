@@ -90,10 +90,15 @@ const (
 	LevelError
 )
 
+const (
+	defaultSubsidy    = 10
+	defaultTargetBits = 16
+)
+
 func NewAppState() *AppState {
 	return &AppState{
-		Subsidy:     10,
-		TargetBits:  16,
+		Subsidy:     defaultSubsidy,
+		TargetBits:  defaultTargetBits,
 		MempoolSize: 10,
 		snapshot:    &Snapshot{},
 	}
@@ -178,7 +183,12 @@ func (s *AppState) ResetBlockchain() error {
 		s.bc = nil
 	}
 
-	return core.RemoveBlockchain()
+	if err := core.RemoveBlockchain(); err != nil {
+		return err
+	}
+	s.Subsidy = defaultSubsidy
+	s.TargetBits = defaultTargetBits
+	return nil
 }
 
 func (s *AppState) SetMempoolSize(size int) {

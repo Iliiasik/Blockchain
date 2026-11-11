@@ -25,6 +25,8 @@ type MiningUI struct {
 
 	content  fyne.CanvasObject
 	miner    *widget.Select
+	subsidy  *widget.Slider
+	bitsBar  *widget.Slider
 	pool     *fyne.Container
 	all      *widget.Check
 	picked   map[string]bool
@@ -57,6 +59,13 @@ func New(st *state.AppState) *MiningUI {
 
 func (m *MiningUI) Content() fyne.CanvasObject {
 	return m.content
+}
+
+func (m *MiningUI) SetActive(active bool) {
+	if active {
+		m.subsidy.SetValue(float64(m.state.Subsidy))
+		m.bitsBar.SetValue(float64(m.state.TargetBits))
+	}
 }
 
 func (m *MiningUI) Focus(address string) {
@@ -166,6 +175,8 @@ func (m *MiningUI) build() fyne.CanvasObject {
 
 	subsidy.SetValue(float64(m.state.Subsidy))
 	bits.SetValue(float64(m.state.TargetBits))
+	m.subsidy = subsidy
+	m.bitsBar = bits
 	m.showTarget(m.state.TargetBits)
 	m.updateReward()
 	m.logLine("Miner ready, choose a wallet and start")

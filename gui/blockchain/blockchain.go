@@ -26,10 +26,12 @@ type BlockchainUI struct {
 	explorer fyne.CanvasObject
 	content  *fyne.Container
 
-	genesis  *widget.Select
-	create   *widget.Button
-	activity *widget.Activity
-	working  *ui.Text
+	genesis       *widget.Select
+	subsidySlider *widget.Slider
+	bitsSlider    *widget.Slider
+	create        *widget.Button
+	activity      *widget.Activity
+	working       *ui.Text
 
 	height     *ui.Stat
 	difficulty *ui.Stat
@@ -55,6 +57,17 @@ func (b *BlockchainUI) Content() fyne.CanvasObject {
 	return b.content
 }
 
+func (b *BlockchainUI) SetActive(active bool) {
+	if active {
+		b.syncParams()
+	}
+}
+
+func (b *BlockchainUI) syncParams() {
+	b.subsidySlider.SetValue(float64(b.state.Subsidy))
+	b.bitsSlider.SetValue(float64(b.state.TargetBits))
+}
+
 func (b *BlockchainUI) Focus(address string) {
 	if !b.snap.HasChain {
 		b.genesis.SetSelected(address)
@@ -73,6 +86,7 @@ func (b *BlockchainUI) buildSetup() fyne.CanvasObject {
 		subsidyLabel.SetText(fmt.Sprintf("Block reward (subsidy): %d", b.state.Subsidy))
 	}
 	subsidy.SetValue(float64(b.state.Subsidy))
+	b.subsidySlider = subsidy
 
 	bitsLabel := ui.NewText("", 13, theme.ColorNameForeground)
 	bitsHint := ui.NewText("", 11, resources.ColorNameMuted)
@@ -90,6 +104,7 @@ func (b *BlockchainUI) buildSetup() fyne.CanvasObject {
 		}
 	}
 	bits.SetValue(float64(b.state.TargetBits))
+	b.bitsSlider = bits
 
 	b.activity = widget.NewActivity()
 	b.activity.Hide()
@@ -173,7 +188,7 @@ func (b *BlockchainUI) buildExplorer() fyne.CanvasObject {
 	b.age = ui.NewStat("Last block")
 
 	b.strip = container.New(layout.NewCustomPaddedHBoxLayout(12))
-	b.scroll = ui.NewHStrip(b.strip)
+	b.scroll = ui.NewHStrip(ui.Padded(0, 12, 0, 0, b.strip))
 
 	reset := ui.Button("Reset", theme.DeleteIcon(), b.onReset)
 	mine := ui.Primary("Mine next block", theme.MediaPlayIcon(), func() { b.state.Go("mining", "") })
@@ -205,6 +220,7 @@ func (b *BlockchainUI) update(snap *state.Snapshot) {
 	if !snap.HasChain {
 		b.explorer.Hide()
 		b.setup.Show()
+		b.syncParams()
 		current := b.genesis.Selected
 		b.genesis.SetOptions(snap.Addresses())
 		if current != "" {
